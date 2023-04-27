@@ -1,6 +1,7 @@
 const hre = require("hardhat");
-const autoLoopRegistrarABI = require("../abi/AutoLoopRegistrar.json");
-const autoLoopRegistryABI = require("../abi/AutoLoopRegistry.json");
+const autoLoopRegistryABI = require("@luckymachines/autoloop/abi/contracts/AutoLoopRegistry.sol/AutoLoopRegistry.json");
+const autoLoopRegistrarABI = require("@luckymachines/autoloop/abi/contracts/AutoLoopRegistrar.sol/AutoLoopRegistrar.json");
+const deployments = require("@luckymachines/autoloop/deployments.json");
 const config = require("../controller.config.json");
 require("dotenv").config();
 
@@ -15,7 +16,7 @@ async function main() {
   const provider = new hre.ethers.providers.JsonRpcProvider(PROVIDER_URL);
   const wallet = new hre.ethers.Wallet(PRIVATE_KEY, provider);
   const registrar = new hre.ethers.Contract(
-    config[hre.network.name].AUTO_LOOP_REGISTRAR,
+    deployments[config.testMode ? config.test.network : config.main.network].AUTO_LOOP_REGISTRAR,
     autoLoopRegistrarABI,
     wallet
   );
@@ -29,7 +30,7 @@ async function main() {
   // TODO: confirm controller is registered with registry
 
   const registry = new hre.ethers.Contract(
-    config[hre.network.name].AUTO_LOOP_REGISTRY,
+    deployments[config.testMode ? config.test.network : config.main.network].AUTO_LOOP_REGISTRY,
     autoLoopRegistryABI,
     wallet
   );
@@ -43,7 +44,7 @@ async function main() {
   }
 
   const AutoLoop = await hre.ethers.getContractFactory("AutoLoop");
-  const autoLoop = AutoLoop.attach(config[hre.network.name].AUTO_LOOP);
+  const autoLoop = AutoLoop.attach(deployments[config.testMode ? config.test.network : config.main.network].AUTO_LOOP);
   const controllerRole = await autoLoop.CONTROLLER_ROLE();
   const hasControllerRole = await autoLoop.hasRole(controllerRole, accounts[0]);
   if (hasControllerRole) {

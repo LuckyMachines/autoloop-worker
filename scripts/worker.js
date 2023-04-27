@@ -1,9 +1,11 @@
 const { ethers } = require("hardhat");
 const hre = require("hardhat");
 const config = require("../controller.config.json");
-const autoLoopABI = require("../abi/AutoLoop.json");
-const autoLoopCompatibleInterfaceABI = require("../abi/AutoLoopCompatibleInterface.json");
-const autoLoopRegistryABI = require("../abi/AutoLoopRegistry.json");
+
+const autoLoopABI = require("@luckymachines/autoloop/abi/contracts/AutoLoop.sol/AutoLoop.json");
+const autoLoopRegistryABI = require("@luckymachines/autoloop/abi/contracts/AutoLoopRegistry.sol/AutoLoopRegistry.json");
+const autoLoopCompatibleInterfaceABI = require("@luckymachines/autoloop/abi/contracts/AutoLoopCompatibleInterface.sol/AutoLoopCompatibleInterface.json");
+const deployments = require("@luckymachines/autoloop/deployments.json");
 require("dotenv").config();
 
 let worker;
@@ -68,7 +70,9 @@ class Worker {
     if (needsUpdate) {
       // const AutoLoop = await hre.ethers.getContractFactory("AutoLoop");
       const autoLoop = new hre.ethers.Contract(
-        config[config.testMode ? "test" : "main"].AUTO_LOOP,
+        deployments[
+          config.testMode ? config.test.network : config.main.network
+        ].AUTO_LOOP,
         autoLoopABI,
         worker.wallet
       );
@@ -93,7 +97,7 @@ class Worker {
           progressWithData,
           {
             gasLimit: totalGas.toString(),
-            nonce: nonce
+            nonce: nonce,
           }
         );
         let receipt = await tx.wait();
@@ -219,7 +223,9 @@ class Queue {
 
 async function registryContractFactory() {
   const registry = new hre.ethers.Contract(
-    config[config.testMode ? "test" : "main"].AUTO_LOOP_REGISTRY,
+    deployments[
+      config.testMode ? config.test.network : config.main.network
+    ].AUTO_LOOP_REGISTRY,
     autoLoopRegistryABI,
     worker.wallet
   );

@@ -1,5 +1,6 @@
 const hre = require("hardhat");
-const autoLoopRegistryABI = require("../abi/AutoLoopRegistry.json");
+const autoLoopRegistryABI = require("@luckymachines/autoloop/abi/contracts/AutoLoopRegistry.sol/AutoLoopRegistry.json");
+const deployments = require("@luckymachines/autoloop/deployments.json");
 const config = require("../controller.config.json");
 require("dotenv").config();
 
@@ -14,7 +15,7 @@ async function main() {
   const provider = new hre.ethers.providers.JsonRpcProvider(PROVIDER_URL);
   const wallet = new hre.ethers.Wallet(PRIVATE_KEY, provider);
   const registry = new hre.ethers.Contract(
-    config[hre.network.name].AUTO_LOOP_REGISTRY,
+    deployments[config.testMode ? config.test.network : config.main.network].AUTO_LOOP_REGISTRY,
     autoLoopRegistryABI,
     wallet
   );

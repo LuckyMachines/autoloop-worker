@@ -8,7 +8,6 @@ typechain-types
 
 # Hardhat files
 cache
-artifacts
 
 # Controller config
 controller.config.json

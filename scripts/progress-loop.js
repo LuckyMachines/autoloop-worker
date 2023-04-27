@@ -1,7 +1,8 @@
 const hre = require("hardhat");
 const config = require("../controller.config.json");
-const autoLoopABI = require("../abi/AutoLoop.json");
-const autoLoopCompatibleInterfaceABI = require("../abi/AutoLoopCompatibleInterface.json");
+const autoLoopABI = require("@luckymachines/autoloop/abi/contracts/AutoLoop.sol/AutoLoop.json");
+const autoLoopCompatibleInterfaceABI = require("@luckymachines/autoloop/abi/contracts/AutoLoopCompatibleInterface.sol/AutoLoopCompatibleInterface.json");
+const deployments = require("@luckymachines/autoloop/deployments.json");
 require("dotenv").config();
 
 // Pass contract address as argument
@@ -29,7 +30,9 @@ async function main() {
     console.log(`Contract ${contractAddress} needs update: ${needsUpdate}`);
     if (needsUpdate) {
       const autoLoop = new hre.ethers.Contract(
-        config[config.testMode ? "test" : "main"].AUTO_LOOP,
+        deployments[
+          config.testMode ? config.test.network : config.main.network
+        ].AUTO_LOOP,
         autoLoopABI,
         wallet
       );
@@ -40,7 +43,7 @@ async function main() {
       const gasToSend = Number(maxGas) + Number(gasBuffer);
       console.log("Calling progress loop on:", autoLoop.address);
       let tx = await autoLoop.progressLoop(contractAddress, progressWithData, {
-        gasLimit: gasToSend
+        gasLimit: gasToSend,
       });
       let receipt = await tx.wait();
       let gasUsed = receipt.gasUsed;
