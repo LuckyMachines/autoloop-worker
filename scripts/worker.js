@@ -30,7 +30,7 @@ class Worker {
   }
 
   async checkNeedsUpdate(contractAddress) {
-    const AutoLoopCompatibleInterfaceArtifact = require("../artifacts/contracts/AutoLoopCompatibleInterface.sol/AutoLoopCompatibleInterface.json");
+    const AutoLoopCompatibleInterfaceArtifact = require("../../autoloop/artifacts/contracts/AutoLoopCompatibleInterface.sol/AutoLoopCompatibleInterface.json");
     const externalAutoLoopContract = new ethers.Contract(
       contractAddress,
       AutoLoopCompatibleInterfaceArtifact.abi,
@@ -52,7 +52,7 @@ class Worker {
   }
 
   async performUpdate(contractAddress) {
-    const AutoLoopCompatibleInterfaceArtifact = require("../artifacts/contracts/AutoLoopCompatibleInterface.sol/AutoLoopCompatibleInterface.json");
+    const AutoLoopCompatibleInterfaceArtifact = require("../../autoloop/artifacts/contracts/AutoLoopCompatibleInterface.sol/AutoLoopCompatibleInterface.json");
     const externalAutoLoopContract = new ethers.Contract(
       contractAddress,
       AutoLoopCompatibleInterfaceArtifact.abi,
@@ -66,7 +66,7 @@ class Worker {
 
     if (needsUpdate) {
       // const AutoLoop = await hre.ethers.getContractFactory("AutoLoop");
-      const AutoLoopArtifact = require("../artifacts/contracts/AutoLoop.sol/AutoLoop.json");
+      const AutoLoopArtifact = require("../../autoloop/artifacts/contracts/AutoLoop.sol/AutoLoop.json");
       const autoLoop = new hre.ethers.Contract(
         config[config.testMode ? "test" : "main"].AUTO_LOOP,
         AutoLoopArtifact.abi,
@@ -93,7 +93,7 @@ class Worker {
           progressWithData,
           {
             gasLimit: totalGas.toString(),
-            nonce: nonce
+            nonce: nonce,
           }
         );
         let receipt = await tx.wait();
@@ -218,7 +218,7 @@ class Queue {
 }
 
 async function registryContractFactory() {
-  const AutoLoopRegistryArtifact = require("../artifacts/contracts/AutoLoopRegistry.sol/AutoLoopRegistry.json");
+  const AutoLoopRegistryArtifact = require("../../autoloop/artifacts/contracts/AutoLoopRegistry.sol/AutoLoopRegistry.json");
 
   const registry = new hre.ethers.Contract(
     config[config.testMode ? "test" : "main"].AUTO_LOOP_REGISTRY,
