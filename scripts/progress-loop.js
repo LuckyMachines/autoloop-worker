@@ -1,5 +1,7 @@
 const hre = require("hardhat");
 const config = require("../controller.config.json");
+const autoLoopABI = require("../abi/AutoLoop.json");
+const autoLoopCompatibleInterfaceABI = require("../abi/AutoLoopCompatibleInterface.json");
 require("dotenv").config();
 
 // Pass contract address as argument
@@ -8,7 +10,6 @@ require("dotenv").config();
 async function main() {
   const contractAddress = process.argv[2] ? process.argv[2] : null;
   if (contractAddress) {
-    const AutoLoopCompatibleInterfaceArtifact = require("../../autoloop/artifacts/contracts/AutoLoopCompatibleInterface.sol/AutoLoopCompatibleInterface.json");
     const PROVIDER_URL = config.testMode
       ? process.env.RPC_URL_TESTNET
       : process.env.RPC_URL;
@@ -19,7 +20,7 @@ async function main() {
     const wallet = new hre.ethers.Wallet(PRIVATE_KEY, provider);
     const externalAutoLoopContract = new hre.ethers.Contract(
       contractAddress,
-      AutoLoopCompatibleInterfaceArtifact.abi,
+      autoLoopCompatibleInterfaceABI,
       wallet
     );
     const check = await externalAutoLoopContract.shouldProgressLoop();
@@ -27,10 +28,9 @@ async function main() {
     let progressWithData = check.progressWithData;
     console.log(`Contract ${contractAddress} needs update: ${needsUpdate}`);
     if (needsUpdate) {
-      const AutoLoopArtifact = require("../../autoloop/artifacts/contracts/AutoLoop.sol/AutoLoop.json");
       const autoLoop = new hre.ethers.Contract(
         config[config.testMode ? "test" : "main"].AUTO_LOOP,
-        AutoLoopArtifact.abi,
+        autoLoopABI,
         wallet
       );
 

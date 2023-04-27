@@ -1,6 +1,9 @@
 const { ethers } = require("hardhat");
 const hre = require("hardhat");
 const config = require("../controller.config.json");
+const autoLoopABI = require("../abi/AutoLoop.json");
+const autoLoopCompatibleInterfaceABI = require("../abi/AutoLoopCompatibleInterface.json");
+const autoLoopRegistryABI = require("../abi/AutoLoopRegistry.json");
 require("dotenv").config();
 
 let worker;
@@ -30,10 +33,9 @@ class Worker {
   }
 
   async checkNeedsUpdate(contractAddress) {
-    const AutoLoopCompatibleInterfaceArtifact = require("../artifacts/contracts/AutoLoopCompatibleInterface.sol/AutoLoopCompatibleInterface.json");
     const externalAutoLoopContract = new ethers.Contract(
       contractAddress,
-      AutoLoopCompatibleInterfaceArtifact.abi,
+      autoLoopCompatibleInterfaceABI,
       worker.wallet
     );
     let needsUpdate = false;
@@ -52,10 +54,9 @@ class Worker {
   }
 
   async performUpdate(contractAddress) {
-    const AutoLoopCompatibleInterfaceArtifact = require("../artifacts/contracts/AutoLoopCompatibleInterface.sol/AutoLoopCompatibleInterface.json");
     const externalAutoLoopContract = new ethers.Contract(
       contractAddress,
-      AutoLoopCompatibleInterfaceArtifact.abi,
+      autoLoopCompatibleInterfaceABI,
       worker.wallet
     );
 
@@ -66,10 +67,9 @@ class Worker {
 
     if (needsUpdate) {
       // const AutoLoop = await hre.ethers.getContractFactory("AutoLoop");
-      const AutoLoopArtifact = require("../artifacts/contracts/AutoLoop.sol/AutoLoop.json");
       const autoLoop = new hre.ethers.Contract(
         config[config.testMode ? "test" : "main"].AUTO_LOOP,
-        AutoLoopArtifact.abi,
+        autoLoopABI,
         worker.wallet
       );
 
@@ -218,11 +218,9 @@ class Queue {
 }
 
 async function registryContractFactory() {
-  const AutoLoopRegistryArtifact = require("../artifacts/contracts/AutoLoopRegistry.sol/AutoLoopRegistry.json");
-
   const registry = new hre.ethers.Contract(
     config[config.testMode ? "test" : "main"].AUTO_LOOP_REGISTRY,
-    AutoLoopRegistryArtifact.abi,
+    autoLoopRegistryABI,
     worker.wallet
   );
   return registry;

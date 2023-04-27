@@ -1,6 +1,7 @@
 const hre = require("hardhat");
 const fs = require("fs");
 const deployments = require("../deployments.json");
+const numberGoUpABI = require("../abi/NumberGoUp.json");
 require("dotenv").config();
 
 const sampleGames = ["0x34767eaB7e409C3920723CA4F2285cb7C1AC5B7E"];
@@ -25,9 +26,17 @@ async function main() {
     );
   }
   */
-  const Game = await hre.ethers.getContractFactory("NumberGoUp");
+  const PROVIDER_URL = config.testMode
+    ? process.env.RPC_URL_TESTNET
+    : process.env.RPC_URL;
+  const PRIVATE_KEY = config.testMode
+    ? process.env.PRIVATE_KEY_TESTNET
+    : process.env.PRIVATE_KEY;
+  const provider = new hre.ethers.providers.JsonRpcProvider(PROVIDER_URL);
+  const wallet = new hre.ethers.Wallet(PRIVATE_KEY, provider);
+
   for (let i = 0; i < sampleGames.length; i++) {
-    const game = Game.attach(sampleGames[i]);
+    const game = new hre.ethers.Contract(sampleGames[i], numberGoUpABI, wallet);
     const gameNumber = await game.number();
     const gameInterval = await game.interval();
     const gameLastTimeStamp = await game.lastTimeStamp();
