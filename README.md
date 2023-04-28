@@ -1,6 +1,6 @@
 # Lucky Machines AutoLoop Worker
 
-An AutoLoop worker you can run to earn profits and
+An AutoLoop worker you can run to support the network and create a stream of income.
 
 # Run a local worker
 
