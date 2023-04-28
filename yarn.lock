@@ -409,10 +409,10 @@
     "@jridgewell/resolve-uri" "^3.0.3"
     "@jridgewell/sourcemap-codec" "^1.4.10"
 
-"@luckymachines/autoloop@0.0.24":
-  version "0.0.24"
-  resolved "https://registry.yarnpkg.com/@luckymachines/autoloop/-/autoloop-0.0.24.tgz#03507bfee03e8537c4724d15bd850fc728b89ab2"
-  integrity sha512-UdJmNt/p+ZI8oMy21opsPSC5tJGEbWrFlYQ5sjOIMwM0+OkWYdcheGNcycoaHtu2LLh8SgJpOsXxLFj1zSudSA==
+"@luckymachines/autoloop@0.0.26":
+  version "0.0.26"
+  resolved "https://registry.yarnpkg.com/@luckymachines/autoloop/-/autoloop-0.0.26.tgz#d3ecf7fbe6b8262523b44922cd966bcc7ca04607"
+  integrity sha512-qNrcb3e3GP0gAMvylNxHKcNt1ydHb2qjorfyta4FwGpWEcRFlXj3xHMyuJG/2l/Igb8I+GvnBDYc1pBY7zPBIQ==
   dependencies:
     inquirer "^8.0.0"
 

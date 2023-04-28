@@ -4,7 +4,7 @@
   "devDependencies": {
     "@chainlink/contracts": "^0.5.1",
     "@ethersproject/providers": "^5.4.7",
-    "@luckymachines/autoloop": "0.0.24",
+    "@luckymachines/autoloop": "0.0.26",
     "@nomicfoundation/hardhat-chai-matchers": "^1.0.0",
     "@nomicfoundation/hardhat-network-helpers": "^1.0.0",
     "@nomicfoundation/hardhat-toolbox": "^2.0.0",

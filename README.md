@@ -10,7 +10,6 @@ An AutoLoop worker you can run to earn profits and
 
 ## Run the AutoLoop worker
 
-- Set contract addresses in controller config (`controller.config.json`)
 - Register wallet as AutoLoop worker (via registrar)
 
 ```shell
