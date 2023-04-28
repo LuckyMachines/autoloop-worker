@@ -4,6 +4,24 @@ An AutoLoop worker you can run to earn profits and
 
 # Run a local worker
 
+## Clone the repo
+
+```shell
+gh repo clone LuckyMachines/autoloop-worker
+```
+
+## Move into directory
+
+```shell
+cd autoloop-worker
+```
+
+## Install dependencies
+
+```shell
+yarn
+```
+
 ## Set Credentials
 
 - Create a `.env` file with RPC URL & wallet private key (see `.env-example`)
