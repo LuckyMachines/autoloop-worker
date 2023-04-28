@@ -68,7 +68,6 @@ class Worker {
     let progressWithData = check.progressWithData;
 
     if (needsUpdate) {
-      // const AutoLoop = await hre.ethers.getContractFactory("AutoLoop");
       const autoLoop = new hre.ethers.Contract(
         deployments[
           config.testMode ? config.test.network : config.main.network
@@ -97,7 +96,7 @@ class Worker {
           progressWithData,
           {
             gasLimit: totalGas.toString(),
-            nonce: nonce,
+            nonce: nonce
           }
         );
         let receipt = await tx.wait();

@@ -23,11 +23,18 @@ async function main() {
     autoLoopRegistrarABI,
     wallet
   );
-  try {
-    const tx = await registrar.registerController();
-    await tx.wait();
-  } catch (err) {
-    console.log(err.message);
+
+  console.log("Checking if can register...");
+  let canRegister = await registrar.canRegisterController(wallet.address);
+  console.log("Can register:", canRegister);
+  if (canRegister) {
+    console.log("Attempting to register:", wallet.address);
+    try {
+      const tx = await registrar.registerController();
+      await tx.wait();
+    } catch (err) {
+      console.log(err.message);
+    }
   }
 
   // TODO: confirm controller is registered with registry
@@ -40,8 +47,7 @@ async function main() {
     wallet
   );
 
-  let accounts = await ethers.provider.listAccounts();
-  const isRegistered = await registry.isRegisteredController(accounts[0]);
+  const isRegistered = await registry.isRegisteredController(wallet.address);
   if (isRegistered) {
     console.log("Controller registered.");
   } else {
@@ -56,7 +62,10 @@ async function main() {
     wallet
   );
   const controllerRole = await autoLoop.CONTROLLER_ROLE();
-  const hasControllerRole = await autoLoop.hasRole(controllerRole, accounts[0]);
+  const hasControllerRole = await autoLoop.hasRole(
+    controllerRole,
+    wallet.address
+  );
   if (hasControllerRole) {
     console.log("Controller role set on AutoLoop");
   } else {
