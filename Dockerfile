@@ -18,3 +18,5 @@ RUN yarn install
 COPY . . 
 
 CMD ["yarn","cloud-start"]
+#CMD ["yarn","start"]
+
