@@ -11,3 +11,6 @@ cache
 
 # Controller config
 controller.config.json
+
+# this would leak private keys, so also has an example
+launchGoogleComputeEngine.sh
