@@ -37,7 +37,6 @@
   "scripts": {
     "progress-loop": "node scripts/progress-loop.js",
     "register-controller": "node scripts/register-controller.js",
-    "sample-info": "node scripts/sample-game-info.js",
     "start": "node scripts/worker.js",
     "cloud-start": "node scripts/register-controller.js && node scripts/worker.js"
   },
