@@ -90,20 +90,33 @@ class Worker {
           progressWithData
         );
         console.log("Estimated gas:", txGas);
+        // add fee on top of gas
         let totalGas = Math.round((Number(txGas) + Number(gasBuffer)) * 1.7);
-        let tx = await autoLoop.progressLoop(
-          contractAddress,
-          progressWithData,
-          {
-            gasLimit: totalGas.toString(),
-            nonce: nonce
-          }
-        );
-        let receipt = await tx.wait();
+        const contractBalance = await autoLoop.balance(contractAddress);
+
+        const gasPrice = await worker.provider.getGasPrice();
+        const totalGasCost = totalGas * gasPrice;
+        let contractHasGas = Number(contractBalance) >= totalGasCost;
+
+        if (contractHasGas) {
+          let tx = await autoLoop.progressLoop(
+            contractAddress,
+            progressWithData,
+            {
+              gasLimit: totalGas.toString(),
+              nonce: nonce
+            }
+          );
+          let receipt = await tx.wait();
+          let gasUsed = receipt.gasUsed;
+          console.log(`Progressed loop on contract ${contractAddress}.`);
+          console.log(`Gas used: ${gasUsed}`);
+        } else {
+          console.log(
+            `Contract ${contractAddress} underfunded. Cannot progress.`
+          );
+        }
         nonceOffset--;
-        let gasUsed = receipt.gasUsed;
-        console.log(`Progressed loop on contract ${contractAddress}.`);
-        console.log(`Gas used: ${gasUsed}`);
       } catch (err) {
         console.log("Error progressing loop", err.message);
         nonceOffset--;

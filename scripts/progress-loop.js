@@ -5,6 +5,8 @@ const autoLoopCompatibleInterfaceABI = require("@luckymachines/autoloop/abi/cont
 const deployments = require("@luckymachines/autoloop/deployments.json");
 require("dotenv").config();
 
+// This script calls progressLoop directly on a contract that conforms to AutoLoopCompatibleInterface
+// Used for testing the contract update without going through a worker
 // Pass contract address as argument
 // yarn progress-loop <CONTRACT ADDRESS>
 
@@ -37,18 +39,20 @@ async function main() {
         wallet
       );
 
-      // Set gas from contract settings
-      let maxGas = await autoLoop.maxGasFor(contractAddress);
-      const gasBuffer = await autoLoop.gasBuffer();
-      const gasToSend = Number(maxGas) + Number(gasBuffer);
-      console.log("Calling progress loop on:", autoLoop.address);
-      let tx = await autoLoop.progressLoop(contractAddress, progressWithData, {
-        gasLimit: gasToSend,
-      });
+      console.log(
+        "Calling progress loop directly on:",
+        externalAutoLoopContract.address
+      );
+      // let tx = await autoLoop.progressLoop(contractAddress, progressWithData, {
+      //   gasLimit: gasToSend,
+      // });
+      let tx = await externalAutoLoopContract.progressLoop(progressWithData);
       let receipt = await tx.wait();
       let gasUsed = receipt.gasUsed;
-      console.log(`Progressed loop on contract ${contractAddress}.`);
-      console.log(`Gas sent: ${gasToSend} Gas used: ${gasUsed}`);
+      console.log(
+        `Progressed loop on contract ${externalAutoLoopContract.address}.`
+      );
+      console.log(`Gas used: ${gasUsed}`);
     }
   } else {
     console.log("Contract address argument not set");

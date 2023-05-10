@@ -1,10 +1,10 @@
 {
-  "name": "@luckymachines/autoloop",
-  "version": "0.0.23",
+  "name": "@luckymachines/autoloop-worker",
+  "version": "0.0.1",
   "devDependencies": {
     "@chainlink/contracts": "^0.5.1",
     "@ethersproject/providers": "^5.4.7",
-    "@luckymachines/autoloop": "0.0.26",
+    "@luckymachines/autoloop": "0.0.32",
     "@nomicfoundation/hardhat-chai-matchers": "^1.0.0",
     "@nomicfoundation/hardhat-network-helpers": "^1.0.0",
     "@nomicfoundation/hardhat-toolbox": "^2.0.0",
@@ -19,7 +19,6 @@
     "dotenv": "^16.0.3",
     "ethers": "^5.4.7",
     "hardhat": "^2.12.5",
-    "hardhat-gas-reporter": "^1.0.8",
     "hardhat-abi-exporter": "^2.10.1",
     "hardhat-contract-sizer": "^2.8.0",
     "hardhat-gas-reporter": "^1.0.8",
@@ -42,7 +41,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/LuckyMachines/autoloop"
+    "url": "https://github.com/LuckyMachines/autoloop-worker"
   },
   "keywords": [
     "hardhat",
@@ -54,8 +53,8 @@
   "author": "Max Meier",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/LuckyMachines/autoloop/issues"
+    "url": "https://github.com/LuckyMachines/autoloop-worker/issues"
   },
-  "homepage": "https://github.com/LuckyMachines/autoloop#readme",
+  "homepage": "https://github.com/LuckyMachines/autoloop-worker#readme",
   "dependencies": {}
 }
