@@ -30,14 +30,14 @@ async function main() {
   if (canRegister) {
     console.log("Attempting to register:", wallet.address);
     try {
-      const tx = await registrar.registerController();
+      const tx = await registrar.registerController({
+        value: hre.ethers.utils.parseEther("0.001")
+      });
       await tx.wait();
     } catch (err) {
       console.log(err.message);
     }
   }
-
-  // TODO: confirm controller is registered with registry
 
   const registry = new hre.ethers.Contract(
     deployments[
