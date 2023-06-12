@@ -414,11 +414,12 @@
     "@jridgewell/resolve-uri" "^3.0.3"
     "@jridgewell/sourcemap-codec" "^1.4.10"
 
-"@luckymachines/autoloop@0.0.33":
-  version "0.0.33"
-  resolved "https://registry.yarnpkg.com/@luckymachines/autoloop/-/autoloop-0.0.33.tgz#f0b172e56fefa0aef1839ae0b7dbb389f89eb1ca"
-  integrity sha512-6vc4CwQakPZB/NIvp8N/xYAELsLZt2zhLLsw4LUt0xy7SCF8Ui2URdPJ0C1Uh7kCzGizhcPXoJ0yvh7J974qyg==
+"@luckymachines/autoloop@0.0.35":
+  version "0.0.35"
+  resolved "https://registry.yarnpkg.com/@luckymachines/autoloop/-/autoloop-0.0.35.tgz#aa8500a7b97f14403cb33cbf74d769ad62fa54ce"
+  integrity sha512-qh3+qyHSWCuEXEVwJvl0yLcyCnnMnxcW4fnnBtv8opvYuDU/rAlwzyFBXfD8WYu4LxZBnXs2p+oV6oHDRgttvQ==
   dependencies:
+    "@openzeppelin/contracts" "^4.9.1"
     inquirer "^8.0.0"
 
 "@metamask/eth-sig-util@^4.0.0":
@@ -727,6 +728,11 @@
   version "4.8.0"
   resolved "https://registry.yarnpkg.com/@openzeppelin/contracts/-/contracts-4.8.0.tgz#6854c37df205dd2c056bdfa1b853f5d732109109"
   integrity sha512-AGuwhRRL+NaKx73WKRNzeCxOCOCxpaqF+kp8TJ89QzAipSwZy/NoflkWaL9bywXFRhIzXt8j38sfF7KBKCPWLw==
+
+"@openzeppelin/contracts@^4.9.1":
+  version "4.9.1"
+  resolved "https://registry.yarnpkg.com/@openzeppelin/contracts/-/contracts-4.9.1.tgz#afa804d2c68398704b0175acc94d91a54f203645"
+  integrity sha512-aLDTLu/If1qYIFW5g4ZibuQaUsFGWQPBq1mZKp/txaebUnGHDmmiBhRLY1tDNedN0m+fJtKZ1zAODS9Yk+V6uA==
 
 "@scure/base@~1.1.0":
   version "1.1.1"
