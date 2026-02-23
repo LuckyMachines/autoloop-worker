@@ -1,0 +1,9 @@
+[
+  "function progressLoop(address contractAddress, bytes calldata progressWithData) external",
+  "function balance(address) public view returns (uint256)",
+  "function maxGasFor(address userAddress) public view returns (uint256)",
+  "function gasBuffer() public view returns (uint256)",
+  "function CONTROLLER_ROLE() public pure returns (bytes32)",
+  "function hasRole(bytes32 role, address account) public view returns (bool)",
+  "event AutoLoopProgressed(address indexed autoLoopCompatibleContract, uint256 indexed timeStamp, address controller, uint256 gasUsed, uint256 gasPrice, uint256 gasCost, uint256 fee)"
+]

@@ -1,20 +1,20 @@
-const hre = require("hardhat");
-const autoLoopRegistryABI = require("@luckymachines/autoloop/abi/contracts/AutoLoopRegistry.sol/AutoLoopRegistry.json");
-const deployments = require("@luckymachines/autoloop/deployments.json");
+const { ethers } = require("ethers");
+const autoLoopRegistryABI = require("../abi/AutoLoopRegistry.json");
+const deployments = require("../deployments.json");
 const config = require("../controller.config.json");
 require("dotenv").config();
 
 async function main() {
-  // register controller with registrar contract
+  // query registered auto loops
   const PROVIDER_URL = config.testMode
     ? process.env.RPC_URL_TESTNET
     : process.env.RPC_URL;
   const PRIVATE_KEY = config.testMode
     ? process.env.PRIVATE_KEY_TESTNET
     : process.env.PRIVATE_KEY;
-  const provider = new hre.ethers.providers.JsonRpcProvider(PROVIDER_URL);
-  const wallet = new hre.ethers.Wallet(PRIVATE_KEY, provider);
-  const registry = new hre.ethers.Contract(
+  const provider = new ethers.JsonRpcProvider(PROVIDER_URL);
+  const wallet = new ethers.Wallet(PRIVATE_KEY, provider);
+  const registry = new ethers.Contract(
     deployments[config.testMode ? config.test.network : config.main.network].AUTO_LOOP_REGISTRY,
     autoLoopRegistryABI,
     wallet

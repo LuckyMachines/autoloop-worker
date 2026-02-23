@@ -1,0 +1,6 @@
+[
+  "function getRegisteredAutoLoops() public view returns (address[])",
+  "function getRegisteredAutoLoopsFromList(address[] memory allowList) public view returns (address[])",
+  "function getRegisteredAutoLoopsExcludingList(address[] memory blockList) public view returns (address[])",
+  "function isRegisteredController(address) public view returns (bool)"
+]

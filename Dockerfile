@@ -1,22 +1,14 @@
-FROM node:18
+FROM node:24-slim
 
-#create app directory
 WORKDIR /usr/src/app
 
-# copy dependencies lists
-
 COPY package.json ./
-COPY yarn.lock  ./
+COPY package-lock.json* ./
 
-# copy our custom config file
 COPY controller.config.json ./
 
-#install dependencies
-RUN yarn install
+RUN npm install --production
 
-# bundle the app source
-COPY . . 
+COPY . .
 
-CMD ["yarn","cloud-start"]
-#CMD ["yarn","start"]
-
+CMD ["npm", "run", "cloud-start"]

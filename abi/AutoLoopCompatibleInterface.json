@@ -1,0 +1,4 @@
+[
+  "function shouldProgressLoop() external view returns (bool loopIsReady, bytes memory progressWithData)",
+  "function progressLoop(bytes calldata progressWithData) external"
+]

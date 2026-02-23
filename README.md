@@ -31,7 +31,7 @@ Edit `controller.config.json`:
 }
 ```
 
-Available networks: `anvil`, `sepolia`, `godwoken`, `godwoken_test`
+Available networks: `anvil`, `sepolia`
 
 ### Register & Run
 

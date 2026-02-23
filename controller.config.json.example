@@ -1,11 +1,11 @@
 {
   "test": {
-    "network": "godwoken_test",
+    "network": "sepolia",
     "allowList": [],
     "blockList": []
   },
   "main": {
-    "network": "godwoken",
+    "network": "sepolia",
     "allowList": [],
     "blockList": []
   },

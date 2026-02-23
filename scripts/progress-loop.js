@@ -1,14 +1,14 @@
-const hre = require("hardhat");
+const { ethers } = require("ethers");
 const config = require("../controller.config.json");
-const autoLoopABI = require("@luckymachines/autoloop/abi/contracts/AutoLoop.sol/AutoLoop.json");
-const autoLoopCompatibleInterfaceABI = require("@luckymachines/autoloop/abi/contracts/AutoLoopCompatibleInterface.sol/AutoLoopCompatibleInterface.json");
-const deployments = require("@luckymachines/autoloop/deployments.json");
+const autoLoopABI = require("../abi/AutoLoop.json");
+const autoLoopCompatibleInterfaceABI = require("../abi/AutoLoopCompatibleInterface.json");
+const deployments = require("../deployments.json");
 require("dotenv").config();
 
 // This script calls progressLoop directly on a contract that conforms to AutoLoopCompatibleInterface
 // Used for testing the contract update without going through a worker
 // Pass contract address as argument
-// yarn progress-loop <CONTRACT ADDRESS>
+// npm run progress-loop <CONTRACT ADDRESS>
 
 async function main() {
   const contractAddress = process.argv[2] ? process.argv[2] : null;
@@ -19,9 +19,9 @@ async function main() {
     const PRIVATE_KEY = config.testMode
       ? process.env.PRIVATE_KEY_TESTNET
       : process.env.PRIVATE_KEY;
-    const provider = new hre.ethers.providers.JsonRpcProvider(PROVIDER_URL);
-    const wallet = new hre.ethers.Wallet(PRIVATE_KEY, provider);
-    const externalAutoLoopContract = new hre.ethers.Contract(
+    const provider = new ethers.JsonRpcProvider(PROVIDER_URL);
+    const wallet = new ethers.Wallet(PRIVATE_KEY, provider);
+    const externalAutoLoopContract = new ethers.Contract(
       contractAddress,
       autoLoopCompatibleInterfaceABI,
       wallet
@@ -31,7 +31,7 @@ async function main() {
     let progressWithData = check.progressWithData;
     console.log(`Contract ${contractAddress} needs update: ${needsUpdate}`);
     if (needsUpdate) {
-      const autoLoop = new hre.ethers.Contract(
+      const autoLoop = new ethers.Contract(
         deployments[
           config.testMode ? config.test.network : config.main.network
         ].AUTO_LOOP,
@@ -39,18 +39,16 @@ async function main() {
         wallet
       );
 
+      const contractAddr = await externalAutoLoopContract.getAddress();
       console.log(
         "Calling progress loop directly on:",
-        externalAutoLoopContract.address
+        contractAddr
       );
-      // let tx = await autoLoop.progressLoop(contractAddress, progressWithData, {
-      //   gasLimit: gasToSend,
-      // });
       let tx = await externalAutoLoopContract.progressLoop(progressWithData);
       let receipt = await tx.wait();
       let gasUsed = receipt.gasUsed;
       console.log(
-        `Progressed loop on contract ${externalAutoLoopContract.address}.`
+        `Progressed loop on contract ${contractAddr}.`
       );
       console.log(`Gas used: ${gasUsed}`);
     }

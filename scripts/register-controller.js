@@ -1,8 +1,8 @@
-const hre = require("hardhat");
-const autoLoopABI = require("@luckymachines/autoloop/abi/contracts/AutoLoop.sol/AutoLoop.json");
-const autoLoopRegistryABI = require("@luckymachines/autoloop/abi/contracts/AutoLoopRegistry.sol/AutoLoopRegistry.json");
-const autoLoopRegistrarABI = require("@luckymachines/autoloop/abi/contracts/AutoLoopRegistrar.sol/AutoLoopRegistrar.json");
-const deployments = require("@luckymachines/autoloop/deployments.json");
+const { ethers } = require("ethers");
+const autoLoopABI = require("../abi/AutoLoop.json");
+const autoLoopRegistryABI = require("../abi/AutoLoopRegistry.json");
+const autoLoopRegistrarABI = require("../abi/AutoLoopRegistrar.json");
+const deployments = require("../deployments.json");
 const config = require("../controller.config.json");
 require("dotenv").config();
 
@@ -14,9 +14,9 @@ async function main() {
   const PRIVATE_KEY = config.testMode
     ? process.env.PRIVATE_KEY_TESTNET
     : process.env.PRIVATE_KEY;
-  const provider = new hre.ethers.providers.JsonRpcProvider(PROVIDER_URL);
-  const wallet = new hre.ethers.Wallet(PRIVATE_KEY, provider);
-  const registrar = new hre.ethers.Contract(
+  const provider = new ethers.JsonRpcProvider(PROVIDER_URL);
+  const wallet = new ethers.Wallet(PRIVATE_KEY, provider);
+  const registrar = new ethers.Contract(
     deployments[
       config.testMode ? config.test.network : config.main.network
     ].AUTO_LOOP_REGISTRAR,
@@ -31,7 +31,7 @@ async function main() {
     console.log("Attempting to register:", wallet.address);
     try {
       const tx = await registrar.registerController({
-        value: hre.ethers.utils.parseEther("0.001")
+        value: ethers.parseEther("0.001")
       });
       await tx.wait();
     } catch (err) {
@@ -39,7 +39,7 @@ async function main() {
     }
   }
 
-  const registry = new hre.ethers.Contract(
+  const registry = new ethers.Contract(
     deployments[
       config.testMode ? config.test.network : config.main.network
     ].AUTO_LOOP_REGISTRY,
@@ -54,7 +54,7 @@ async function main() {
     console.log("Controller not registered");
   }
 
-  const autoLoop = new hre.ethers.Contract(
+  const autoLoop = new ethers.Contract(
     deployments[
       config.testMode ? config.test.network : config.main.network
     ].AUTO_LOOP,

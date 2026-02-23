@@ -1,0 +1,4 @@
+[
+  "function registerController() external payable returns (bool success)",
+  "function canRegisterController(address registrantAddress) public view returns (bool canRegister)"
+]
