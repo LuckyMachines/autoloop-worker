@@ -3,6 +3,7 @@ const config = require("../controller.config.json");
 const autoLoopABI = require("../abi/AutoLoop.json");
 const autoLoopCompatibleInterfaceABI = require("../abi/AutoLoopCompatibleInterface.json");
 const deployments = require("../deployments.json");
+const { resolveRuntime } = require("./runtime-config");
 require("dotenv").config();
 
 // This script calls progressLoop directly on a contract that conforms to AutoLoopCompatibleInterface
@@ -13,14 +14,9 @@ require("dotenv").config();
 async function main() {
   const contractAddress = process.argv[2] ? process.argv[2] : null;
   if (contractAddress) {
-    const PROVIDER_URL = config.testMode
-      ? process.env.RPC_URL_TESTNET
-      : process.env.RPC_URL;
-    const PRIVATE_KEY = config.testMode
-      ? process.env.PRIVATE_KEY_TESTNET
-      : process.env.PRIVATE_KEY;
-    const provider = new ethers.JsonRpcProvider(PROVIDER_URL);
-    const wallet = new ethers.Wallet(PRIVATE_KEY, provider);
+    const runtime = resolveRuntime(config);
+    const provider = new ethers.JsonRpcProvider(runtime.rpcUrl);
+    const wallet = new ethers.Wallet(runtime.privateKey, provider);
     const externalAutoLoopContract = new ethers.Contract(
       contractAddress,
       autoLoopCompatibleInterfaceABI,
@@ -32,9 +28,7 @@ async function main() {
     console.log(`Contract ${contractAddress} needs update: ${needsUpdate}`);
     if (needsUpdate) {
       const autoLoop = new ethers.Contract(
-        deployments[
-          config.testMode ? config.test.network : config.main.network
-        ].AUTO_LOOP,
+        deployments[runtime.network].AUTO_LOOP,
         autoLoopABI,
         wallet
       );

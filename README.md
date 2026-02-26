@@ -1,6 +1,23 @@
 # Lucky Machines AutoLoop Worker
 
-An off-chain bot that monitors [AutoLoop](https://github.com/LuckyMachines/autoloop)-compatible contracts and triggers `progressLoop()` when needed. Supports standard loops and VRF (verifiable randomness) loops.
+An off-chain worker that monitors registered AutoLoop-compatible contracts and executes `progressLoop()` when needed. Supports both standard loops and VRF loops.
+
+## AI Agent Quickstart
+
+Machine-readable context lives in `llms.txt`.
+
+Recommended agent flow:
+
+1. Read `llms.txt` and `README.md`
+2. Configure `.env` and `controller.config.json`
+3. Run `npm run register-controller`
+4. Run `npm start` and monitor `scripts/worker.js` logs
+
+## Requirements
+
+- Node.js `>=24`
+- Access to an RPC endpoint for the target network
+- A funded controller private key
 
 ## Quick Start
 
@@ -10,77 +27,69 @@ cd autoloop-worker
 npm install
 ```
 
-### Configure Environment
+Create `.env` from `.env-example` and set your keys and RPC URLs.
 
-Create a `.env` file (see `.env-example`):
+For local Anvil, default RPC is:
 
 ```env
-RPC_URL=http://127.0.0.1:8545
-PRIVATE_KEY=your_controller_private_key
-PRIVATE_KEY_TESTNET=your_testnet_private_key
+RPC_URL=http://127.0.0.1:8555
+PRIVATE_KEY=0x...
 ```
 
-### Configure Network
+You can also define per-network keys:
+
+```env
+PRIVATE_KEY_ANVIL=0x...
+RPC_URL_ANVIL=http://127.0.0.1:8555
+PRIVATE_KEY_SEPOLIA=0x...
+RPC_URL_SEPOLIA=https://ethereum-sepolia-rpc.publicnode.com
+```
+
+## Worker Config
 
 Edit `controller.config.json`:
 
 ```json
 {
   "network": "anvil",
-  "testMode": true
+  "allowList": [],
+  "blockList": []
 }
 ```
 
-Available networks: `anvil`, `sepolia`
+- `network`: deployment key in `deployments.json` (for example `anvil`, `sepolia`)
+- `allowList`: optional explicit contract list to monitor
+- `blockList`: optional contracts to exclude when using full registry scan
 
-### Register & Run
+Legacy `test/main/testMode` config shape is still supported.
+
+## Run
 
 ```shell
-# Register your wallet as an AutoLoop controller
 npm run register-controller
-
-# Start the worker
 npm start
 ```
 
-The worker will poll for registered contracts, check `shouldProgressLoop()`, and submit `progressLoop()` transactions when needed.
+Scripts:
+
+- `npm start`: run worker (`scripts/worker.js`)
+- `npm run register-controller`: register current wallet as controller
+- `npm run registered-auto-loops`: list registered contracts
+- `npm run progress-loop <ADDRESS>`: manual one-off loop progression
 
 ## VRF Support
 
-The worker automatically detects VRF-compatible contracts via ERC-165 (`supportsInterface`) and generates ECVRF proofs when required. No extra configuration is needed.
+The worker auto-detects VRF-compatible contracts via ERC-165 (`supportsInterface`) and submits VRF proofs when required.
 
-### How It Works
-
-1. **Detection** — On each update cycle, the worker calls `supportsInterface(VRF_INTERFACE_ID)` on each contract. Results are cached.
-2. **Seed computation** — The deterministic seed is `keccak256(contractAddress, loopID)`, matching the on-chain `computeSeed()` function.
-3. **Proof generation** — The worker generates an ECVRF-SECP256K1-SHA256-TAI proof using the controller's private key:
-   - Hash-to-curve (try-and-increment)
-   - Gamma = privateKey * H
-   - Fiat-Shamir challenge + response
-   - Precomputed U and V points for `fastVerify()`
-4. **Envelope wrapping** — The proof, helper points, and original game data are ABI-encoded into a VRF envelope and submitted as `progressWithData`.
-5. **On-chain verification** — The contract's `VRFVerifier.sol` verifies the proof and extracts a `bytes32` random value.
-
-### VRF Key Registration
-
-Before a VRF contract will accept proofs from your controller, your public key must be registered on-chain:
+Before a VRF contract accepts proofs from a controller, the controller public key must be registered on-chain:
 
 ```solidity
-// Called once per controller per VRF contract
 vrfContract.registerControllerKey(controllerAddress, pkX, pkY);
 ```
 
-The [autoloop-dashboard](https://github.com/LuckyMachines/autoloop-dashboard) provides a one-click UI for this step.
-
-### Dependencies
-
-VRF proof generation uses:
-
-- [`@noble/curves`](https://github.com/paulmillr/noble-curves) — secp256k1 elliptic curve operations
-- [`@noble/hashes`](https://github.com/paulmillr/noble-hashes) — SHA-256 and keccak256
-- [`ethers`](https://docs.ethers.org/v6/) — ABI encoding, key derivation
+The [autoloop-dashboard](https://github.com/LuckyMachines/autoloop-dashboard) can perform this registration from UI.
 
 ## Related Repos
 
-- [autoloop](https://github.com/LuckyMachines/autoloop) — Smart contracts (AutoLoop, VRFVerifier, AutoLoopVRFCompatible)
-- [autoloop-dashboard](https://github.com/LuckyMachines/autoloop-dashboard) — Web-based control panel and event monitor
+- [autoloop](https://github.com/LuckyMachines/autoloop) - Core contracts
+- [autoloop-dashboard](https://github.com/LuckyMachines/autoloop-dashboard) - Local control panel and event stream

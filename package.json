@@ -1,6 +1,20 @@
 {
   "name": "@luckymachines/autoloop-worker",
   "version": "0.1.0",
+  "description": "Off-chain controller worker for progressing AutoLoop contracts and delivering VRF proofs.",
+  "keywords": [
+    "autoloop",
+    "worker",
+    "controller",
+    "automation",
+    "ethereum",
+    "vrf",
+    "smart-contracts"
+  ],
+  "homepage": "https://github.com/LuckyMachines/autoloop-worker#readme",
+  "bugs": {
+    "url": "https://github.com/LuckyMachines/autoloop-worker/issues"
+  },
   "engines": {
     "node": ">=24.0.0"
   },

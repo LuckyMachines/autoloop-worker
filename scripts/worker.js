@@ -7,6 +7,7 @@ const autoLoopABI = require("../abi/AutoLoop.json");
 const autoLoopRegistryABI = require("../abi/AutoLoopRegistry.json");
 const autoLoopCompatibleInterfaceABI = require("../abi/AutoLoopCompatibleInterface.json");
 const deployments = require("../deployments.json");
+const { resolveRuntime } = require("./runtime-config");
 require("dotenv").config();
 
 // VRF interface ID: bytes4(keccak256("AutoLoopVRFCompatible"))
@@ -22,6 +23,7 @@ const vrfCompatibleCache = new Map();
 
 let worker;
 let queue;
+let runtime;
 
 // This is not necessarily called every block. This is how many blocks to wait after
 // queue of addresses needing updates has been processed.
@@ -239,14 +241,10 @@ class Worker {
     this.expirationUpdates = expiration ? expiration : DEFAULT_EXPIRATION;
     this.totalUpdates = 0;
     this.totalBlocksPassed = 0;
-    const PROVIDER_URL = config.testMode
-      ? process.env.RPC_URL_TESTNET
-      : process.env.RPC_URL;
-    const PRIVATE_KEY = config.testMode
-      ? process.env.PRIVATE_KEY_TESTNET
-      : process.env.PRIVATE_KEY;
-    this.provider = new ethers.JsonRpcProvider(PROVIDER_URL);
-    this.wallet = new ethers.Wallet(PRIVATE_KEY, this.provider);
+    this.network = runtime.network;
+    this.privateKey = runtime.privateKey;
+    this.provider = new ethers.JsonRpcProvider(runtime.rpcUrl);
+    this.wallet = new ethers.Wallet(this.privateKey, this.provider);
   }
 
   async checkNeedsUpdate(contractAddress) {
@@ -287,10 +285,6 @@ class Worker {
       const vrfEnabled = await isVRFCompatible(contractAddress, worker.wallet);
       if (vrfEnabled) {
         try {
-          const PRIVATE_KEY = config.testMode
-            ? process.env.PRIVATE_KEY_TESTNET
-            : process.env.PRIVATE_KEY;
-
           // Compute the seed: keccak256(contractAddress, loopID)
           // The loopID is encoded in progressWithData from shouldProgressLoop
           const abiCoder = ethers.AbiCoder.defaultAbiCoder();
@@ -300,7 +294,7 @@ class Worker {
           );
 
           // Generate VRF proof
-          const vrfProof = generateVRFProof("0x" + PRIVATE_KEY.replace(/^0x/, ""), seed);
+          const vrfProof = generateVRFProof("0x" + this.privateKey.replace(/^0x/, ""), seed);
           console.log(`Generated VRF proof for contract ${contractAddress} (loopID: ${loopID})`);
 
           // Wrap in VRF envelope
@@ -312,9 +306,7 @@ class Worker {
       }
 
       const autoLoop = new ethers.Contract(
-        deployments[
-          config.testMode ? config.test.network : config.main.network
-        ].AUTO_LOOP,
+        deployments[this.network].AUTO_LOOP,
         autoLoopABI,
         worker.wallet
       );
@@ -448,8 +440,8 @@ class Queue {
     try {
       const registryAddress = await this.registryContract.getAddress();
       console.log("registry:", registryAddress);
-      const allowList = config[config.testMode ? "test" : "main"].allowList;
-      const blockList = config[config.testMode ? "test" : "main"].blockList;
+      const allowList = runtime.allowList;
+      const blockList = runtime.blockList;
       if (allowList.length > 0) {
         this.contracts =
           await this.registryContract.getRegisteredAutoLoopsFromList(allowList);
@@ -472,9 +464,7 @@ class Queue {
 
 async function createRegistryContract() {
   const registry = new ethers.Contract(
-    deployments[
-      config.testMode ? config.test.network : config.main.network
-    ].AUTO_LOOP_REGISTRY,
+    deployments[runtime.network].AUTO_LOOP_REGISTRY,
     autoLoopRegistryABI,
     worker.wallet
   );
@@ -482,6 +472,7 @@ async function createRegistryContract() {
 }
 
 async function setup() {
+  runtime = resolveRuntime(config);
   worker = new Worker(
     process.argv[2] ? process.argv[2] : null,
     process.argv[3] ? process.argv[3] : null

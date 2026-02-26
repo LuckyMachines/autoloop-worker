@@ -1,0 +1,36 @@
+# Lucky Machines AutoLoop Worker
+
+The worker is an off-chain controller process that discovers registered AutoLoop contracts and executes `progressLoop()` when ready.
+
+## Canonical Files
+
+- `README.md` - setup and command reference
+- `scripts/worker.js` - main polling and execution loop
+- `scripts/register-controller.js` - controller registration helper
+- `scripts/progress-loop.js` - one-off manual progression
+- `controller.config.json` - network and allowlist/blocklist behavior
+- `deployments.json` - deployed contract addresses by network
+
+## Required Environment
+
+- `PRIVATE_KEY` or network-specific keys (`PRIVATE_KEY_ANVIL`, `PRIVATE_KEY_SEPOLIA`, ...)
+- `RPC_URL` or network-specific RPC URLs
+- optional runtime tuning via `controller.config.json`
+
+## Quickstart Commands
+
+1. `npm install`
+2. `npm run register-controller`
+3. `npm start`
+
+## VRF Notes
+
+- Worker checks ERC-165 support to identify VRF-compatible contracts.
+- For VRF contracts, worker submits a proof envelope expected by `AutoLoopVRFCompatible`.
+- Controller public key must be registered on-chain before proof acceptance.
+
+## Related Repositories
+
+- `../autoloop` - protocol contracts and VRF verifier
+- `../autoloop-dashboard` - local orchestration and monitoring UI
+

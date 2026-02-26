@@ -2,20 +2,16 @@ const { ethers } = require("ethers");
 const autoLoopRegistryABI = require("../abi/AutoLoopRegistry.json");
 const deployments = require("../deployments.json");
 const config = require("../controller.config.json");
+const { resolveRuntime } = require("./runtime-config");
 require("dotenv").config();
 
 async function main() {
+  const runtime = resolveRuntime(config);
   // query registered auto loops
-  const PROVIDER_URL = config.testMode
-    ? process.env.RPC_URL_TESTNET
-    : process.env.RPC_URL;
-  const PRIVATE_KEY = config.testMode
-    ? process.env.PRIVATE_KEY_TESTNET
-    : process.env.PRIVATE_KEY;
-  const provider = new ethers.JsonRpcProvider(PROVIDER_URL);
-  const wallet = new ethers.Wallet(PRIVATE_KEY, provider);
+  const provider = new ethers.JsonRpcProvider(runtime.rpcUrl);
+  const wallet = new ethers.Wallet(runtime.privateKey, provider);
   const registry = new ethers.Contract(
-    deployments[config.testMode ? config.test.network : config.main.network].AUTO_LOOP_REGISTRY,
+    deployments[runtime.network].AUTO_LOOP_REGISTRY,
     autoLoopRegistryABI,
     wallet
   );

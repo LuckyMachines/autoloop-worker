@@ -1,11 +1,14 @@
 {
-  "test": {
+  "network": "anvil",
+  "allowList": [],
+  "blockList": [],
+  "main": {
     "network": "sepolia",
     "allowList": [],
     "blockList": []
   },
-  "main": {
-    "network": "sepolia",
+  "test": {
+    "network": "anvil",
     "allowList": [],
     "blockList": []
   },
