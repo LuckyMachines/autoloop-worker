@@ -46,11 +46,32 @@ function resolveRuntime(config, env = process.env) {
   const suffix = networkEnvSuffix(network);
 
   // Backward compatibility: *_TESTNET is treated as sepolia legacy keys.
-  const rpcUrl = firstDefined(env, [
+  const primaryRpcUrl = firstDefined(env, [
     `RPC_URL_${suffix}`,
     network === "sepolia" ? "RPC_URL_TESTNET" : null,
     "RPC_URL",
   ]);
+
+  // Build rpcUrls array: split comma-separated primary, then add numbered fallbacks
+  let rpcUrls = [];
+  if (primaryRpcUrl) {
+    // Support comma-separated URLs in a single env var
+    rpcUrls = primaryRpcUrl.split(",").map((u) => u.trim()).filter(Boolean);
+  }
+
+  // Add numbered fallbacks RPC_URL_1 through RPC_URL_10 (skip duplicates)
+  for (let i = 1; i <= 10; i++) {
+    const numbered = env[`RPC_URL_${i}`];
+    if (typeof numbered === "string" && numbered.trim() !== "") {
+      const trimmed = numbered.trim();
+      if (!rpcUrls.includes(trimmed)) {
+        rpcUrls.push(trimmed);
+      }
+    }
+  }
+
+  const rpcUrl = rpcUrls.length > 0 ? rpcUrls[0] : null;
+
   const privateKey = firstDefined(env, [
     `PRIVATE_KEY_${suffix}`,
     network === "sepolia" ? "PRIVATE_KEY_TESTNET" : null,
@@ -73,6 +94,7 @@ function resolveRuntime(config, env = process.env) {
     allowList: profile.allowList,
     blockList: profile.blockList,
     rpcUrl,
+    rpcUrls,
     privateKey,
     isLocal: LOCAL_NETWORKS.has(network),
   };

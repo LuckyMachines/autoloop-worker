@@ -7,6 +7,8 @@ let healthData = {
   blockNumber: 0,
   loopsMonitored: 0,
   lastCheck: null,
+  activeProvider: 0,
+  totalProviders: 1,
 };
 
 const startTime = Date.now();
@@ -40,4 +42,4 @@ function startHealthServer() {
   return server;
 }
 
-module.exports = { startHealthServer, updateHealth };
+module.exports = { startHealthServer, updateHealth, startTime };

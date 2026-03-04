@@ -14,8 +14,9 @@ const autoLoopRegistryABI = require("../abi/AutoLoopRegistry.json");
 const autoLoopCompatibleInterfaceABI = require("../abi/AutoLoopCompatibleInterface.json");
 const deployments = require("../deployments.json");
 const { resolveRuntime } = require("./runtime-config");
-const { startHealthServer, updateHealth } = require("./health");
+const { startHealthServer, updateHealth, startTime } = require("./health");
 const log = require("./logger");
+const { sendAlert } = require("./alerter");
 require("dotenv").config();
 
 // VRF interface ID: bytes4(keccak256("AutoLoopVRFCompatible"))
@@ -32,6 +33,8 @@ const vrfCompatibleCache = new Map();
 let worker;
 let queue;
 let runtime;
+let isShuttingDown = false;
+let activeUpdateCount = 0;
 
 // This is not necessarily called every block. This is how many blocks to wait after
 // queue of addresses needing updates has been processed.
@@ -39,7 +42,7 @@ const DEFAULT_PING_INTERVAL = 1; // # blocks to wait before checking
 const DEFAULT_EXPIRATION = 0; // # updates to wait before shutting down, 0 = never
 const QUEUE_REFRESH_INTERVAL = 50; // re-download queue every N blocks to pick up new registrations
 
-let nonceOffset = 0;
+// NonceManager handles nonce tracking automatically
 
 // ---------------------------------------------------------------
 //  ECVRF Proof Generation Utilities
@@ -252,8 +255,40 @@ class Worker {
     this.totalBlocksPassed = 0;
     this.network = runtime.network;
     this.privateKey = runtime.privateKey;
+    this.rpcUrls = runtime.rpcUrls;
+    this.activeProviderIndex = 0;
     this.provider = new ethers.JsonRpcProvider(runtime.rpcUrl);
     this.wallet = new ethers.Wallet(this.privateKey, this.provider);
+    this.managedWallet = new ethers.NonceManager(this.wallet);
+  }
+
+  async switchProvider() {
+    const nextIndex = (this.activeProviderIndex + 1) % this.rpcUrls.length;
+    if (nextIndex === this.activeProviderIndex && this.rpcUrls.length === 1) {
+      log.warn("No fallback RPC available, retrying same provider");
+    }
+    this.activeProviderIndex = nextIndex;
+    const newUrl = this.rpcUrls[this.activeProviderIndex];
+    log.info("Switching RPC provider", {
+      index: this.activeProviderIndex,
+      url: newUrl.replace(/\/\/.*@/, '//***@'), // mask credentials in logs
+      totalProviders: this.rpcUrls.length,
+    });
+    sendAlert("warn", "RPC Provider Switch", `Switched to provider ${this.activeProviderIndex + 1}/${this.rpcUrls.length}`, {
+      "Provider Index": this.activeProviderIndex.toString(),
+      "Total Providers": this.rpcUrls.length.toString(),
+    }, "provider_switch");
+
+    // Remove existing listeners
+    this.provider.removeAllListeners();
+
+    // Create new provider, wallet, and NonceManager
+    this.provider = new ethers.JsonRpcProvider(newUrl);
+    this.wallet = new ethers.Wallet(this.privateKey, this.provider);
+    this.managedWallet = new ethers.NonceManager(this.wallet);
+
+    // Re-start block listener
+    await this.start();
   }
 
   async checkNeedsUpdate(contractAddress) {
@@ -314,17 +349,12 @@ class Worker {
       const autoLoop = new ethers.Contract(
         deployments[this.network].AUTO_LOOP,
         autoLoopABI,
-        worker.wallet
+        worker.managedWallet
       );
 
       // Set gas from contract settings
       let maxGas = await autoLoop.maxGasFor(contractAddress);
       const gasBuffer = await autoLoop.gasBuffer();
-      const gasToSend = BigInt(maxGas) + BigInt(gasBuffer);
-      let nonce =
-        (await worker.provider.getTransactionCount(this.wallet.address)) +
-        nonceOffset; // accounts for pending updates
-      nonceOffset++;
       try {
         const txGas = await autoLoop.progressLoop.estimateGas(
           contractAddress,
@@ -346,7 +376,6 @@ class Worker {
             progressWithData,
             {
               gasLimit: totalGas,
-              nonce: nonce
             }
           );
           let receipt = await tx.wait();
@@ -355,10 +384,14 @@ class Worker {
         } else {
           log.warn(`Contract ${contractAddress} underfunded. Cannot progress.`, { contract: contractAddress, balance: contractBalance.toString() });
         }
-        nonceOffset--;
       } catch (err) {
         log.error("Error progressing loop", { contract: contractAddress, error: err.message });
-        nonceOffset--;
+        sendAlert("error", "Transaction Failed", `Failed to progress loop on ${contractAddress}`, {
+          Contract: contractAddress,
+          Error: err.message,
+        }, "tx_failure");
+        // Reset nonce manager to re-sync from chain on next tx
+        worker.managedWallet.reset();
       }
     } else {
       throw new Error(`Contract no longer needs update: ${contractAddress}`);
@@ -369,6 +402,7 @@ class Worker {
     log.info("Starting block listener...");
 
     worker.provider.on("block", async (blockNumber) => {
+      if (isShuttingDown) return;
       try {
         if (this.totalBlocksPassed % this.pingInterval == 0) {
           // Download queue on first run, and periodically re-download to pick up new registrations
@@ -383,18 +417,25 @@ class Worker {
             network: this.network,
             blockNumber,
             loopsMonitored: queue.contracts.length,
+            activeUpdates: activeUpdateCount,
             lastCheck: new Date().toISOString(),
+            activeProvider: this.activeProviderIndex,
+            totalProviders: this.rpcUrls.length,
           });
 
           // Snapshot the current queue so modifications during iteration are safe
           const currentContracts = [...queue.contracts];
 
           for (let i = 0; i < currentContracts.length; i++) {
+            if (isShuttingDown) break;
             const needsUpdate = await this.checkNeedsUpdate(currentContracts[i]);
             if (needsUpdate) {
               try {
+                activeUpdateCount++;
                 await this.performUpdate(currentContracts[i]);
+                activeUpdateCount--;
               } catch (err) {
+                activeUpdateCount--;
                 // "No longer needs update" is transient — don't remove, just log
                 log.warn(`Update skipped for ${currentContracts[i]}`, { contract: currentContracts[i], error: err.message });
               }
@@ -434,13 +475,48 @@ class Worker {
         lastCheck: new Date().toISOString(),
         lastError: err.message,
       });
+      // Attempt failover on connection-level errors
+      const failoverErrors = ["SERVER_ERROR", "NETWORK_ERROR", "TIMEOUT", "ECONNREFUSED", "ENOTFOUND", "ECONNRESET"];
+      const shouldFailover = failoverErrors.some(code =>
+        err.code === code || (err.message && err.message.includes(code))
+      );
+      if (shouldFailover && this.rpcUrls.length > 1) {
+        this.switchProvider().catch(switchErr => {
+          log.error("Failed to switch provider", { error: switchErr.message });
+        });
+      }
     });
   }
 
   async stop() {
     log.info("Stopping worker...");
-    // do any final tasks before worker is down
-    process.exit();
+    isShuttingDown = true;
+    sendAlert("info", "Worker Shutting Down", `AutoLoop worker shutting down gracefully`, {
+      "Total Updates": this.totalUpdates.toString(),
+      "Uptime (s)": Math.floor((Date.now() - startTime) / 1000).toString(),
+    });
+    updateHealth({ status: "shutting_down" });
+
+    // Remove block listener to stop new work
+    this.provider.removeAllListeners();
+
+    // Wait for in-progress transactions to complete (poll every 1s)
+    const drainStart = Date.now();
+    const DRAIN_TIMEOUT = 30000; // 30s — Railway's SIGTERM window
+    while (activeUpdateCount > 0) {
+        if (Date.now() - drainStart > DRAIN_TIMEOUT) {
+            log.warn("Drain timeout reached, forcing exit", { activeUpdates: activeUpdateCount });
+            break;
+        }
+        log.info("Waiting for in-progress transactions...", { activeUpdates: activeUpdateCount });
+        await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+
+    log.info("Worker stopped cleanly", {
+        totalUpdates: this.totalUpdates,
+        uptime: Math.floor((Date.now() - startTime) / 1000)
+    });
+    process.exit(0);
   }
 }
 
@@ -502,11 +578,16 @@ async function createRegistryContract() {
 
 async function setup() {
   runtime = resolveRuntime(config);
-  log.info("Worker starting", { network: runtime.network, rpcUrl: runtime.rpcUrl });
+  log.info("Worker starting", { network: runtime.network, rpcUrl: runtime.rpcUrl, totalRpcUrls: runtime.rpcUrls.length });
 
   // Start health server
   startHealthServer();
   updateHealth({ status: "initializing", network: runtime.network });
+
+  sendAlert("info", "Worker Starting", `AutoLoop worker starting on ${runtime.network}`, {
+    Network: runtime.network,
+    "RPC URLs": runtime.rpcUrls.length.toString(),
+  });
 
   worker = new Worker(
     process.argv[2] ? process.argv[2] : null,
@@ -514,6 +595,18 @@ async function setup() {
   );
   const registry = await createRegistryContract();
   queue = new Queue(registry);
+
+  // Graceful shutdown handlers
+  const shutdown = (signal) => {
+    log.info(`Received ${signal}, initiating graceful shutdown...`);
+    if (worker) {
+      worker.stop();
+    } else {
+      process.exit(0);
+    }
+  };
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
 }
 
 function main() {
