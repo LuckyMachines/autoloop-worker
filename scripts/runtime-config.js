@@ -41,7 +41,8 @@ function networkEnvSuffix(network) {
 
 function resolveRuntime(config, env = process.env) {
   const profile = normalizeProfile(config);
-  const network = profile.network;
+  // NETWORK env var overrides config file — lets Railway set network per-service
+  const network = env.NETWORK || profile.network;
   const suffix = networkEnvSuffix(network);
 
   // Backward compatibility: *_TESTNET is treated as sepolia legacy keys.

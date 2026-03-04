@@ -3,7 +3,13 @@ const autoLoopABI = require("../abi/AutoLoop.json");
 const autoLoopRegistryABI = require("../abi/AutoLoopRegistry.json");
 const autoLoopRegistrarABI = require("../abi/AutoLoopRegistrar.json");
 const deployments = require("../deployments.json");
-const config = require("../controller.config.json");
+// Config file is optional when NETWORK env var is set (e.g. Railway deployments)
+let config;
+try {
+  config = require("../controller.config.json");
+} catch {
+  config = { network: process.env.NETWORK || "anvil", allowList: [], blockList: [] };
+}
 const { resolveRuntime } = require("./runtime-config");
 require("dotenv").config();
 

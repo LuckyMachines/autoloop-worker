@@ -1,13 +1,21 @@
 const { ethers } = require("ethers");
 const { secp256k1 } = require("@noble/curves/secp256k1");
 const { sha256 } = require("@noble/hashes/sha256");
-const config = require("../controller.config.json");
+// Config file is optional when NETWORK env var is set (e.g. Railway deployments)
+let config;
+try {
+  config = require("../controller.config.json");
+} catch {
+  config = { network: process.env.NETWORK || "anvil", allowList: [], blockList: [] };
+}
 
 const autoLoopABI = require("../abi/AutoLoop.json");
 const autoLoopRegistryABI = require("../abi/AutoLoopRegistry.json");
 const autoLoopCompatibleInterfaceABI = require("../abi/AutoLoopCompatibleInterface.json");
 const deployments = require("../deployments.json");
 const { resolveRuntime } = require("./runtime-config");
+const { startHealthServer, updateHealth } = require("./health");
+const log = require("./logger");
 require("dotenv").config();
 
 // VRF interface ID: bytes4(keccak256("AutoLoopVRFCompatible"))
@@ -29,6 +37,7 @@ let runtime;
 // queue of addresses needing updates has been processed.
 const DEFAULT_PING_INTERVAL = 1; // # blocks to wait before checking
 const DEFAULT_EXPIRATION = 0; // # updates to wait before shutting down, 0 = never
+const QUEUE_REFRESH_INTERVAL = 50; // re-download queue every N blocks to pick up new registrations
 
 let nonceOffset = 0;
 
@@ -259,10 +268,7 @@ class Worker {
       const check = await externalAutoLoopContract.shouldProgressLoop();
       needsUpdate = check.loopIsReady;
     } catch (err) {
-      console.log(
-        `Error checking auto loop compatible contract: ${contractAddress}.`
-      );
-      console.log(err.message);
+      log.error(`Error checking auto loop compatible contract: ${contractAddress}.`, { contract: contractAddress, error: err.message });
     }
 
     return needsUpdate;
@@ -295,13 +301,13 @@ class Worker {
 
           // Generate VRF proof
           const vrfProof = generateVRFProof("0x" + this.privateKey.replace(/^0x/, ""), seed);
-          console.log(`Generated VRF proof for contract ${contractAddress} (loopID: ${loopID})`);
+          log.info(`Generated VRF proof for contract ${contractAddress}`, { contract: contractAddress, loopID: loopID.toString() });
 
           // Wrap in VRF envelope
           progressWithData = wrapWithVRFEnvelope(vrfProof, progressWithData);
         } catch (vrfErr) {
-          console.log(`VRF proof generation failed for ${contractAddress}: ${vrfErr.message}`);
-          console.log("Falling back to non-VRF update (will likely revert for VRF contracts)");
+          log.warn(`VRF proof generation failed for ${contractAddress}, skipping update`, { contract: contractAddress, error: vrfErr.message });
+          return; // Don't send a non-VRF tx to a VRF contract — it will revert and waste gas
         }
       }
 
@@ -324,7 +330,7 @@ class Worker {
           contractAddress,
           progressWithData
         );
-        console.log("Estimated gas:", txGas.toString());
+        log.info("Estimated gas", { gas: txGas.toString(), contract: contractAddress });
         // add fee on top of gas
         let totalGas = (BigInt(txGas) + BigInt(gasBuffer)) * 17n / 10n;
         const contractBalance = await autoLoop.balance(contractAddress);
@@ -345,16 +351,13 @@ class Worker {
           );
           let receipt = await tx.wait();
           let gasUsed = receipt.gasUsed;
-          console.log(`Progressed loop on contract ${contractAddress}.`);
-          console.log(`Gas used: ${gasUsed}`);
+          log.info(`Progressed loop on contract ${contractAddress}.`, { contract: contractAddress, gasUsed: gasUsed.toString() });
         } else {
-          console.log(
-            `Contract ${contractAddress} underfunded. Cannot progress.`
-          );
+          log.warn(`Contract ${contractAddress} underfunded. Cannot progress.`, { contract: contractAddress, balance: contractBalance.toString() });
         }
         nonceOffset--;
       } catch (err) {
-        console.log("Error progressing loop", err.message);
+        log.error("Error progressing loop", { contract: contractAddress, error: err.message });
         nonceOffset--;
       }
     } else {
@@ -363,53 +366,79 @@ class Worker {
   }
 
   async start() {
-    worker.provider.once("block", async (blockNumber) => {
-      if (this.totalBlocksPassed % this.pingInterval == 0) {
-        let contractsToRemove = [];
-        try {
-          if (queue.contracts.length == 0) {
-            console.log("Downloading queue...");
+    log.info("Starting block listener...");
+
+    worker.provider.on("block", async (blockNumber) => {
+      try {
+        if (this.totalBlocksPassed % this.pingInterval == 0) {
+          // Download queue on first run, and periodically re-download to pick up new registrations
+          if (queue.contracts.length == 0 || this.totalBlocksPassed % QUEUE_REFRESH_INTERVAL == 0) {
+            log.info("Downloading queue...");
             await queue.download();
           }
 
-          for (let i = 0; i < queue.contracts.length; i++) {
-            const needsUpdate = await this.checkNeedsUpdate(queue.contracts[i]);
+          // Update health with current stats
+          updateHealth({
+            status: "running",
+            network: this.network,
+            blockNumber,
+            loopsMonitored: queue.contracts.length,
+            lastCheck: new Date().toISOString(),
+          });
+
+          // Snapshot the current queue so modifications during iteration are safe
+          const currentContracts = [...queue.contracts];
+
+          for (let i = 0; i < currentContracts.length; i++) {
+            const needsUpdate = await this.checkNeedsUpdate(currentContracts[i]);
             if (needsUpdate) {
               try {
-                await this.performUpdate(queue.contracts[i]);
+                await this.performUpdate(currentContracts[i]);
               } catch (err) {
-                console.log(
-                  `Error performing update on auto loop compatible contract: ${queue.contracts[i]}`
-                );
-                console.log(err.message);
-                contractsToRemove.push(queue.contracts[i]);
+                // "No longer needs update" is transient — don't remove, just log
+                log.warn(`Update skipped for ${currentContracts[i]}`, { contract: currentContracts[i], error: err.message });
               }
             }
           }
-        } catch (err) {
-          console.log(`Error at block ${blockNumber}\n${err.message}`);
-        }
-        if (contractsToRemove.length > 0) {
-          console.log("Clearing unused contracts...");
-          for (let i = 0; i < contractsToRemove.length; i++) {
-            queue.removeContract(contractsToRemove[i]);
+
+          this.totalUpdates++;
+          if (
+            this.expirationUpdates > 0 &&
+            this.totalUpdates >= this.expirationUpdates
+          ) {
+            await this.stop();
           }
         }
-        this.totalUpdates++;
-        if (
-          this.expirationUpdates > 0 &&
-          this.totalUpdates >= this.expirationUpdates
-        ) {
-          await this.stop();
-        }
+        this.totalBlocksPassed++;
+      } catch (err) {
+        log.error(`Error processing block ${blockNumber}`, { blockNumber, error: err.message });
+        // Update health to show error state but keep running
+        updateHealth({
+          status: "error",
+          network: this.network,
+          blockNumber,
+          loopsMonitored: queue.contracts.length,
+          lastCheck: new Date().toISOString(),
+          lastError: err.message,
+        });
       }
-      this.totalBlocksPassed++;
-      await this.start();
+    });
+
+    // Handle provider errors and reconnect
+    worker.provider.on("error", (err) => {
+      log.error("Provider error", { error: err.message });
+      updateHealth({
+        status: "error",
+        network: this.network,
+        loopsMonitored: queue.contracts.length,
+        lastCheck: new Date().toISOString(),
+        lastError: err.message,
+      });
     });
   }
 
   async stop() {
-    console.log("Stopping worker...");
+    log.info("Stopping worker...");
     // do any final tasks before worker is down
     process.exit();
   }
@@ -439,7 +468,7 @@ class Queue {
     // get queue from contracts
     try {
       const registryAddress = await this.registryContract.getAddress();
-      console.log("registry:", registryAddress);
+      log.info("Registry address", { registry: registryAddress });
       const allowList = runtime.allowList;
       const blockList = runtime.blockList;
       if (allowList.length > 0) {
@@ -455,9 +484,9 @@ class Queue {
           this.contracts = await this.registryContract.getRegisteredAutoLoops();
         }
       }
-      console.log("Queue:", this.contracts);
+      log.info("Queue downloaded", { contracts: this.contracts });
     } catch (err) {
-      console.error(err);
+      log.error("Error downloading queue", { error: err.message });
     }
   }
 }
@@ -473,6 +502,12 @@ async function createRegistryContract() {
 
 async function setup() {
   runtime = resolveRuntime(config);
+  log.info("Worker starting", { network: runtime.network, rpcUrl: runtime.rpcUrl });
+
+  // Start health server
+  startHealthServer();
+  updateHealth({ status: "initializing", network: runtime.network });
+
   worker = new Worker(
     process.argv[2] ? process.argv[2] : null,
     process.argv[3] ? process.argv[3] : null
@@ -490,6 +525,6 @@ setup()
     main();
   })
   .catch((error) => {
-    console.error(error);
+    log.error("Fatal startup error", { error: error.message });
     process.exit(1);
   });

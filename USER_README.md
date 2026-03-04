@@ -1,11 +1,11 @@
 # AutoLoop Worker User Guide
 
-This file now mirrors the canonical setup and usage in [README.md](README.md).
+See [README.md](README.md) for full setup and usage instructions, including:
 
-Use `README.md` for:
-
-- environment setup (`.env`)
-- network/config selection (`controller.config.json`)
-- worker commands (`register-controller`, `start`, `progress-loop`)
+- Environment setup (`.env`)
+- Configuration (`controller.config.json` or `NETWORK` env var)
+- Worker commands (`register-controller`, `start`, `cloud-start`)
+- Health endpoint (`GET /health`)
 - VRF setup and key registration
-- machine-readable project context (`llms.txt`)
+- Cloud deployment (Railway, Docker)
+- Machine-readable context (`llms.txt`)

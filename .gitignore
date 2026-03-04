@@ -14,3 +14,7 @@ controller.config.json
 
 # this would leak private keys, so also has an example
 launchGoogleComputeEngine.sh
+
+# Worker key files
+.env.worker-keys
+.env.railway.*

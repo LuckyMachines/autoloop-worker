@@ -4,24 +4,36 @@ The worker is an off-chain controller process that discovers registered AutoLoop
 
 ## Canonical Files
 
-- `README.md` - setup and command reference
+- `README.md` - setup, configuration, and command reference
 - `scripts/worker.js` - main polling and execution loop
 - `scripts/register-controller.js` - controller registration helper
 - `scripts/progress-loop.js` - one-off manual progression
-- `controller.config.json` - network and allowlist/blocklist behavior
+- `scripts/health.js` - HTTP health endpoint server
+- `scripts/logger.js` - structured JSON logging
+- `scripts/runtime-config.js` - environment variable and config resolution
+- `controller.config.json` - network and allowlist/blocklist (optional when NETWORK env var is set)
 - `deployments.json` - deployed contract addresses by network
+- `Dockerfile` - container build with health check
+- `railway.toml` - Railway deployment configuration
 
 ## Required Environment
 
 - `PRIVATE_KEY` or network-specific keys (`PRIVATE_KEY_ANVIL`, `PRIVATE_KEY_SEPOLIA`, ...)
 - `RPC_URL` or network-specific RPC URLs
-- optional runtime tuning via `controller.config.json`
+- `NETWORK` (optional) - overrides controller.config.json network setting
+- `PORT` (optional, default 3000) - health server port
 
 ## Quickstart Commands
 
 1. `npm install`
-2. `npm run register-controller`
+2. `npm run register-controller` (costs 0.001 ETH)
 3. `npm start`
+
+For cloud: `npm run cloud-start` (register + start in one command)
+
+## Health Endpoint
+
+GET /health returns JSON: { status, uptime, network, blockNumber, loopsMonitored, lastCheck }
 
 ## VRF Notes
 
@@ -32,5 +44,4 @@ The worker is an off-chain controller process that discovers registered AutoLoop
 ## Related Repositories
 
 - `../autoloop` - protocol contracts and VRF verifier
-- `../autoloop-dashboard` - local orchestration and monitoring UI
-
+- `../autoloop-dashboard-v2` - managed service dashboard (Next.js)

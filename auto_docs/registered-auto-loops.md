@@ -4,27 +4,23 @@ This script retrieves the list of registered AutoLoops from the AutoLoop Registr
 
 ## Prerequisites
 
-Ensure the following dependencies are installed and configured:
-
-- `hardhat`
-- `dotenv`
-- AutoLoop ABI files and deployment information
+- Node.js >= 24
+- `ethers` and `dotenv` packages (installed via `npm install`)
+- AutoLoop ABI files and deployment addresses in `deployments.json`
 
 ## Usage
 
-To run the script, execute the following command:
-
 ```sh
-yarn get-registered-autoloops
+npm run registered-auto-loops
 ```
 
 ## Script Flow
 
-1. Set up the provider and wallet using environment variables and configuration settings.
-2. Create an instance of the AutoLoop Registry contract using its ABI.
-3. Call the `getRegisteredAutoLoops()` function on the Registry contract to retrieve the list of registered AutoLoops.
-4. Log the list of registered AutoLoops.
+1. Resolve runtime configuration (network, RPC URL, private key).
+2. Create an instance of the AutoLoop Registry contract.
+3. Call `getRegisteredAutoLoops()` on the Registry contract.
+4. Log the list of registered AutoLoop contract addresses.
 
 ## Error Handling
 
-If an error occurs during the execution of the main function, the error message is logged, and the process exits with a non-zero status code.
+If an error occurs during execution, the error message is logged and the process exits with a non-zero status code.

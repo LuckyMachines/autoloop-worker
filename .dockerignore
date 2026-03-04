@@ -1,2 +1,9 @@
 node_modules
 npm-debug.log
+.env
+.env.*
+controller.config.json
+.git
+.gitignore
+auto_docs
+*.md

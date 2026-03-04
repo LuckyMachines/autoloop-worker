@@ -4,18 +4,14 @@ This script manually progresses the loop on a specified Ethereum contract. It ch
 
 ## Prerequisites
 
-Ensure the following dependencies are installed and configured:
-
-- `hardhat`
-- `dotenv`
-- AutoLoop ABI files and deployment information
+- Node.js >= 24
+- `ethers` and `dotenv` packages (installed via `npm install`)
+- AutoLoop ABI files and deployment addresses in `deployments.json`
 
 ## Usage
 
-To run the script, execute the following command:
-
 ```sh
-yarn progress-loop <CONTRACT_ADDRESS>
+npm run progress-loop <CONTRACT_ADDRESS>
 ```
 
 Replace `<CONTRACT_ADDRESS>` with the address of the contract you want to progress the loop on.
@@ -23,16 +19,14 @@ Replace `<CONTRACT_ADDRESS>` with the address of the contract you want to progre
 ## Script Flow
 
 1. Read the contract address from the command line argument.
-2. Set up the provider and wallet using environment variables and configuration settings.
+2. Resolve runtime configuration (network, RPC URL, private key).
 3. Create an instance of the target contract using the `AutoLoopCompatibleInterface` ABI.
-4. Call the `shouldProgressLoop()` function on the target contract to check if it needs an update.
-5. If the contract needs an update, create an instance of the AutoLoop contract using its ABI.
+4. Call `shouldProgressLoop()` on the target contract to check if it needs an update.
+5. If the contract needs an update, create an instance of the AutoLoop contract.
 6. Get the `maxGas` and `gasBuffer` values from the AutoLoop contract.
-7. Call the `progressLoop()` function on the AutoLoop contract with the target contract address and progress data.
-8. Wait for the transaction receipt and display the gas sent and gas used for the transaction.
+7. Call `progressLoop()` on the AutoLoop contract with the target contract address and progress data.
+8. Wait for the transaction receipt and display the gas sent and gas used.
 
 ## Error Handling
 
-The script checks for the presence of the contract address argument. If the argument is not set, it logs an error message and exits.
-
-If an error occurs during the execution of the main function, the error message is logged, and the process exits with a non-zero status code.
+The script checks for the presence of the contract address argument. If not provided, it logs an error and exits. Runtime errors are logged and the process exits with a non-zero status code.
