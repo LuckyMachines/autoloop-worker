@@ -79,9 +79,12 @@ function validateEnvironment() {
       throw new Error("SIGNER_MODE must be 'kms' for mainnet deployment");
     }
     if (!proxyAdmin || proxyAdmin === ethers.ZeroAddress) {
-      throw new Error(
-        "PROXY_ADMIN must be set to a multisig address for mainnet"
-      );
+      // Allow deployer as proxy admin with explicit PROXY_ADMIN=deployer flag
+      if (proxyAdmin !== "deployer") {
+        throw new Error(
+          "PROXY_ADMIN must be set for mainnet. Use a multisig address, or PROXY_ADMIN=deployer to use the KMS address (transfer to Safe later)."
+        );
+      }
     }
     if (process.env.PRIVATE_KEY) {
       throw new Error(
@@ -139,11 +142,20 @@ async function main() {
   const signer = await createSigner(signerMode, provider);
   const deployerAddress = await signer.getAddress();
 
+  // Resolve "deployer" to the actual KMS/signer address
+  const resolvedProxyAdmin = (!proxyAdmin || proxyAdmin === "deployer")
+    ? deployerAddress
+    : proxyAdmin;
+
+  if (resolvedProxyAdmin === deployerAddress) {
+    log.warn("WARNING: Proxy admin is deployer address. Transfer to a Safe after deployment!");
+  }
+
   log.info("Deployment configuration", {
     network: network.name,
     chainId: network.chainId.toString(),
     deployer: deployerAddress,
-    proxyAdmin: proxyAdmin || deployerAddress,
+    proxyAdmin: resolvedProxyAdmin,
     signerMode,
     dryRun,
   });
@@ -162,13 +174,13 @@ async function main() {
   // Check deployer balance
   const balance = await provider.getBalance(deployerAddress);
   log.info("Deployer balance", { eth: ethers.formatEther(balance) });
-  if (balance < ethers.parseEther("0.1")) {
+  if (balance < ethers.parseEther("0.002")) {
     throw new Error(
-      `Deployer balance too low: ${ethers.formatEther(balance)} ETH. Need at least 0.1 ETH.`
+      `Deployer balance too low: ${ethers.formatEther(balance)} ETH. Need at least 0.002 ETH.`
     );
   }
 
-  const adminAddress = proxyAdmin || deployerAddress;
+  const adminAddress = resolvedProxyAdmin;
 
   // Load forge artifacts
   const AutoLoop = loadContract("AutoLoop");
@@ -178,75 +190,103 @@ async function main() {
     "TransparentUpgradeableProxy"
   );
 
-  // Step 1: Deploy implementations
-  log.info("Deploying AutoLoop implementation...");
-  const { address: autoLoopImplAddr } = await deployContract(
-    signer,
-    AutoLoop.abi,
-    AutoLoop.bytecode
-  );
-  log.info("AutoLoop implementation deployed", { address: autoLoopImplAddr });
+  // Step 1: Deploy implementations (or reuse if RESUME_IMPL_* env vars are set)
+  let autoLoopImplAddr = process.env.RESUME_IMPL_AUTOLOOP;
+  let registryImplAddr = process.env.RESUME_IMPL_REGISTRY;
+  let registrarImplAddr = process.env.RESUME_IMPL_REGISTRAR;
 
-  log.info("Deploying AutoLoopRegistry implementation...");
-  const { address: registryImplAddr } = await deployContract(
-    signer,
-    AutoLoopRegistry.abi,
-    AutoLoopRegistry.bytecode
-  );
-  log.info("Registry implementation deployed", { address: registryImplAddr });
+  if (autoLoopImplAddr && registryImplAddr && registrarImplAddr) {
+    log.info("Resuming with existing implementations", {
+      autoLoop: autoLoopImplAddr,
+      registry: registryImplAddr,
+      registrar: registrarImplAddr,
+    });
+  } else {
+    log.info("Deploying AutoLoop implementation...");
+    ({ address: autoLoopImplAddr } = await deployContract(
+      signer,
+      AutoLoop.abi,
+      AutoLoop.bytecode
+    ));
+    log.info("AutoLoop implementation deployed", { address: autoLoopImplAddr });
 
-  log.info("Deploying AutoLoopRegistrar implementation...");
-  const { address: registrarImplAddr } = await deployContract(
-    signer,
-    AutoLoopRegistrar.abi,
-    AutoLoopRegistrar.bytecode
-  );
-  log.info("Registrar implementation deployed", {
-    address: registrarImplAddr,
-  });
+    log.info("Deploying AutoLoopRegistry implementation...");
+    ({ address: registryImplAddr } = await deployContract(
+      signer,
+      AutoLoopRegistry.abi,
+      AutoLoopRegistry.bytecode
+    ));
+    log.info("Registry implementation deployed", { address: registryImplAddr });
 
-  // Step 2: Deploy proxies with initialization
+    log.info("Deploying AutoLoopRegistrar implementation...");
+    ({ address: registrarImplAddr } = await deployContract(
+      signer,
+      AutoLoopRegistrar.abi,
+      AutoLoopRegistrar.bytecode
+    ));
+    log.info("Registrar implementation deployed", {
+      address: registrarImplAddr,
+    });
+  }
+
+  // Step 2: Deploy proxies with initialization (or resume from RESUME_PROXY_* env vars)
   const autoLoopIface = new ethers.Interface(AutoLoop.abi);
   const registryIface = new ethers.Interface(AutoLoopRegistry.abi);
   const registrarIface = new ethers.Interface(AutoLoopRegistrar.abi);
 
-  log.info("Deploying AutoLoop proxy...");
-  const autoLoopInitData = autoLoopIface.encodeFunctionData("initialize", [
-    "0.1.0",
-  ]);
-  const { address: autoLoopProxyAddr } = await deployContract(
-    signer,
-    TransparentUpgradeableProxy.abi,
-    TransparentUpgradeableProxy.bytecode,
-    [autoLoopImplAddr, adminAddress, autoLoopInitData]
-  );
-  log.info("AutoLoop proxy deployed", { address: autoLoopProxyAddr });
+  let autoLoopProxyAddr = process.env.RESUME_PROXY_AUTOLOOP;
+  let registryProxyAddr = process.env.RESUME_PROXY_REGISTRY;
+  let registrarProxyAddr = process.env.RESUME_PROXY_REGISTRAR;
 
-  log.info("Deploying Registry proxy...");
-  const registryInitData = registryIface.encodeFunctionData("initialize", [
-    deployerAddress,
-  ]);
-  const { address: registryProxyAddr } = await deployContract(
-    signer,
-    TransparentUpgradeableProxy.abi,
-    TransparentUpgradeableProxy.bytecode,
-    [registryImplAddr, adminAddress, registryInitData]
-  );
-  log.info("Registry proxy deployed", { address: registryProxyAddr });
+  if (autoLoopProxyAddr) {
+    log.info("Resuming with existing AutoLoop proxy", { address: autoLoopProxyAddr });
+  } else {
+    log.info("Deploying AutoLoop proxy...");
+    const autoLoopInitData = autoLoopIface.encodeFunctionData("initialize(string)", [
+      "0.1.0",
+    ]);
+    ({ address: autoLoopProxyAddr } = await deployContract(
+      signer,
+      TransparentUpgradeableProxy.abi,
+      TransparentUpgradeableProxy.bytecode,
+      [autoLoopImplAddr, adminAddress, autoLoopInitData]
+    ));
+    log.info("AutoLoop proxy deployed", { address: autoLoopProxyAddr });
+  }
 
-  log.info("Deploying Registrar proxy...");
-  const registrarInitData = registrarIface.encodeFunctionData("initialize", [
-    autoLoopProxyAddr,
-    registryProxyAddr,
-    deployerAddress,
-  ]);
-  const { address: registrarProxyAddr } = await deployContract(
-    signer,
-    TransparentUpgradeableProxy.abi,
-    TransparentUpgradeableProxy.bytecode,
-    [registrarImplAddr, adminAddress, registrarInitData]
-  );
-  log.info("Registrar proxy deployed", { address: registrarProxyAddr });
+  if (registryProxyAddr) {
+    log.info("Resuming with existing Registry proxy", { address: registryProxyAddr });
+  } else {
+    log.info("Deploying Registry proxy...");
+    const registryInitData = registryIface.encodeFunctionData("initialize(address)", [
+      deployerAddress,
+    ]);
+    ({ address: registryProxyAddr } = await deployContract(
+      signer,
+      TransparentUpgradeableProxy.abi,
+      TransparentUpgradeableProxy.bytecode,
+      [registryImplAddr, adminAddress, registryInitData]
+    ));
+    log.info("Registry proxy deployed", { address: registryProxyAddr });
+  }
+
+  if (registrarProxyAddr) {
+    log.info("Resuming with existing Registrar proxy", { address: registrarProxyAddr });
+  } else {
+    log.info("Deploying Registrar proxy...");
+    const registrarInitData = registrarIface.encodeFunctionData("initialize(address,address,address)", [
+      autoLoopProxyAddr,
+      registryProxyAddr,
+      deployerAddress,
+    ]);
+    ({ address: registrarProxyAddr } = await deployContract(
+      signer,
+      TransparentUpgradeableProxy.abi,
+      TransparentUpgradeableProxy.bytecode,
+      [registrarImplAddr, adminAddress, registrarInitData]
+    ));
+    log.info("Registrar proxy deployed", { address: registrarProxyAddr });
+  }
 
   // Step 3: Wire up registrar roles
   log.info("Setting registrar on AutoLoop...");

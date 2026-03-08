@@ -138,6 +138,8 @@ class GcpKmsSigner extends AbstractSigner {
   async signTransaction(tx) {
     const address = await this.getAddress();
     const populated = await this.populateTransaction(tx);
+    // Remove 'from' — Transaction.from() rejects it on unsigned transactions
+    delete populated.from;
     const transaction = Transaction.from(populated);
     const unsignedBytes = getBytes(transaction.unsignedSerialized);
     const digest = getBytes(keccak256(unsignedBytes));

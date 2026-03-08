@@ -1,0 +1,16 @@
+{
+  "network": "mainnet",
+  "chainId": "1",
+  "deployer": "0xf0f917ccbb18a73dee95e9911ae0ccf97d683f79",
+  "proxyAdmin": "0xf0f917ccbb18a73dee95e9911ae0ccf97d683f79",
+  "contracts": {
+    "AUTO_LOOP": "0x6748415BcE63c0FBf1E50ceB2128BfeAC977224F",
+    "AUTO_LOOP_REGISTRY": "0xC1b9241DE87108EffF5caAf0340CcEbD05A5425f",
+    "AUTO_LOOP_REGISTRAR": "0x202d73Ac243907A6e81B5FF55E4c316567e4fF80"
+  },
+  "implementations": {
+    "AutoLoop": "0xf4d2D2CD84fE9A451553DFB9ce53A20AFDa702B0",
+    "AutoLoopRegistry": "0x1FF715D46470B4024D88A12838e08A60855f0AE2",
+    "AutoLoopRegistrar": "0xB56457618aF1537D99b9Ca898f0c7c0e87537332"
+  }
+}
