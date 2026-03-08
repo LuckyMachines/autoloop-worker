@@ -36,5 +36,8 @@
     "@noble/hashes": "^1.7.0",
     "dotenv": "^16.4.7",
     "ethers": "^6.13.0"
+  },
+  "optionalDependencies": {
+    "@google-cloud/kms": "^5.3.0"
   }
 }

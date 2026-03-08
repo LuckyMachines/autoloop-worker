@@ -1,4 +1,5 @@
 const LOCAL_NETWORKS = new Set(["anvil", "localhost", "hardhat"]);
+const MAINNET_NETWORKS = new Set(["mainnet", "ethereum"]);
 
 function firstDefined(env, keys) {
   for (const key of keys) {
@@ -72,18 +73,46 @@ function resolveRuntime(config, env = process.env) {
 
   const rpcUrl = rpcUrls.length > 0 ? rpcUrls[0] : null;
 
-  const privateKey = firstDefined(env, [
-    `PRIVATE_KEY_${suffix}`,
-    network === "sepolia" ? "PRIVATE_KEY_TESTNET" : null,
-    "PRIVATE_KEY",
-  ]);
+  // Signer mode: 'dev' uses raw private key, 'kms' uses GCP Cloud KMS
+  const signerMode = env.SIGNER_MODE || "dev";
+  const isMainnet = MAINNET_NETWORKS.has(network);
+
+  // Safety: mainnet must use KMS
+  if (isMainnet && signerMode === "dev") {
+    throw new Error(
+      `SIGNER_MODE must be "kms" for mainnet. Raw private keys are not allowed on mainnet.`
+    );
+  }
+
+  // Safety: KMS mode must not have PRIVATE_KEY set (prevent cross-wire)
+  if (signerMode === "kms" && firstDefined(env, ["PRIVATE_KEY"])) {
+    console.warn(
+      "WARNING: PRIVATE_KEY is set but SIGNER_MODE=kms — ignoring PRIVATE_KEY"
+    );
+  }
+
+  const kmsKeyArn = env.KMS_KEY_ARN || null;
+
+  if (signerMode === "kms" && !kmsKeyArn) {
+    throw new Error(
+      `KMS_KEY_ARN is required when SIGNER_MODE=kms`
+    );
+  }
+
+  const privateKey = signerMode === "dev"
+    ? firstDefined(env, [
+        `PRIVATE_KEY_${suffix}`,
+        network === "sepolia" ? "PRIVATE_KEY_TESTNET" : null,
+        "PRIVATE_KEY",
+      ])
+    : null;
 
   if (!rpcUrl) {
     throw new Error(
       `Missing RPC URL for network "${network}". Set RPC_URL_${suffix} or RPC_URL.`
     );
   }
-  if (!privateKey) {
+  if (signerMode === "dev" && !privateKey) {
     throw new Error(
       `Missing private key for network "${network}". Set PRIVATE_KEY_${suffix} or PRIVATE_KEY.`
     );
@@ -96,7 +125,10 @@ function resolveRuntime(config, env = process.env) {
     rpcUrl,
     rpcUrls,
     privateKey,
+    signerMode,
+    kmsKeyArn,
     isLocal: LOCAL_NETWORKS.has(network),
+    isMainnet,
   };
 }
 

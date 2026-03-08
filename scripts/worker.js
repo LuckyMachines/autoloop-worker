@@ -19,6 +19,15 @@ const log = require("./logger");
 const { sendAlert } = require("./alerter");
 require("dotenv").config();
 
+// KMS signer — loaded lazily only when SIGNER_MODE=kms
+let GcpKmsSigner;
+function getGcpKmsSigner() {
+  if (!GcpKmsSigner) {
+    GcpKmsSigner = require("./gcp-kms-signer").GcpKmsSigner;
+  }
+  return GcpKmsSigner;
+}
+
 // VRF interface ID: bytes4(keccak256("AutoLoopVRFCompatible"))
 const VRF_INTERFACE_ID = ethers.id("AutoLoopVRFCompatible").slice(0, 10);
 
@@ -34,6 +43,7 @@ let worker;
 let queue;
 let runtime;
 let isShuttingDown = false;
+let isProcessing = false; // Guard against overlapping block handlers
 let activeUpdateCount = 0;
 
 // This is not necessarily called every block. This is how many blocks to wait after
@@ -254,12 +264,21 @@ class Worker {
     this.totalUpdates = 0;
     this.totalBlocksPassed = 0;
     this.network = runtime.network;
-    this.privateKey = runtime.privateKey;
+    this.signerMode = runtime.signerMode;
+    this.privateKey = runtime.privateKey; // null when signerMode=kms
     this.rpcUrls = runtime.rpcUrls;
     this.activeProviderIndex = 0;
     this.provider = new ethers.JsonRpcProvider(runtime.rpcUrl);
-    this.wallet = new ethers.Wallet(this.privateKey, this.provider);
-    this.managedWallet = new ethers.NonceManager(this.wallet);
+
+    if (this.signerMode === "kms") {
+      const KmsSigner = getGcpKmsSigner();
+      this.wallet = new KmsSigner(runtime.kmsKeyArn, this.provider);
+      this.managedWallet = new ethers.NonceManager(this.wallet);
+      log.info("Using GCP KMS signer", { keyArn: runtime.kmsKeyArn.split("/").pop() });
+    } else {
+      this.wallet = new ethers.Wallet(this.privateKey, this.provider);
+      this.managedWallet = new ethers.NonceManager(this.wallet);
+    }
   }
 
   async switchProvider() {
@@ -284,7 +303,12 @@ class Worker {
 
     // Create new provider, wallet, and NonceManager
     this.provider = new ethers.JsonRpcProvider(newUrl);
-    this.wallet = new ethers.Wallet(this.privateKey, this.provider);
+    if (this.signerMode === "kms") {
+      const KmsSigner = getGcpKmsSigner();
+      this.wallet = new KmsSigner(runtime.kmsKeyArn, this.provider);
+    } else {
+      this.wallet = new ethers.Wallet(this.privateKey, this.provider);
+    }
     this.managedWallet = new ethers.NonceManager(this.wallet);
 
     // Re-start block listener
@@ -297,104 +321,96 @@ class Worker {
       autoLoopCompatibleInterfaceABI,
       worker.wallet
     );
-    let needsUpdate = false;
 
     try {
       const check = await externalAutoLoopContract.shouldProgressLoop();
-      needsUpdate = check.loopIsReady;
+      return {
+        needsUpdate: check.loopIsReady,
+        progressWithData: check.progressWithData,
+      };
     } catch (err) {
       log.error(`Error checking auto loop compatible contract: ${contractAddress}.`, { contract: contractAddress, error: err.message });
+      return { needsUpdate: false, progressWithData: null };
     }
-
-    return needsUpdate;
   }
 
-  async performUpdate(contractAddress) {
-    const externalAutoLoopContract = new ethers.Contract(
-      contractAddress,
-      autoLoopCompatibleInterfaceABI,
-      worker.wallet
+  async performUpdate(contractAddress, progressWithData) {
+    // Check if contract supports VRF and wrap data accordingly
+    const vrfEnabled = await isVRFCompatible(contractAddress, worker.wallet);
+    if (vrfEnabled) {
+      // VRF proof generation requires the raw private key (for Gamma = sk * H).
+      // KMS signers never expose the private key, so VRF is incompatible with KMS mode.
+      if (this.signerMode === "kms") {
+        log.warn(`VRF contract ${contractAddress} cannot be served in KMS mode — private key required for VRF proofs`, { contract: contractAddress });
+        return;
+      }
+      try {
+        // Compute the seed: keccak256(contractAddress, loopID)
+        // The loopID is encoded in progressWithData from shouldProgressLoop
+        const abiCoder = ethers.AbiCoder.defaultAbiCoder();
+        const loopID = abiCoder.decode(["uint256"], progressWithData)[0];
+        const seed = ethers.keccak256(
+          ethers.solidityPacked(["address", "uint256"], [contractAddress, loopID])
+        );
+
+        // Generate VRF proof
+        const vrfProof = generateVRFProof("0x" + this.privateKey.replace(/^0x/, ""), seed);
+        log.info(`Generated VRF proof for contract ${contractAddress}`, { contract: contractAddress, loopID: loopID.toString() });
+
+        // Wrap in VRF envelope
+        progressWithData = wrapWithVRFEnvelope(vrfProof, progressWithData);
+      } catch (vrfErr) {
+        log.warn(`VRF proof generation failed for ${contractAddress}, skipping update`, { contract: contractAddress, error: vrfErr.message });
+        return; // Don't send a non-VRF tx to a VRF contract — it will revert and waste gas
+      }
+    }
+
+    const autoLoop = new ethers.Contract(
+      deployments[this.network].AUTO_LOOP,
+      autoLoopABI,
+      worker.managedWallet
     );
 
-    // confirm update is still needed and grab update data
-    const check = await externalAutoLoopContract.shouldProgressLoop();
-    let needsUpdate = check.loopIsReady;
-    let progressWithData = check.progressWithData;
-
-    if (needsUpdate) {
-      // Check if contract supports VRF and wrap data accordingly
-      const vrfEnabled = await isVRFCompatible(contractAddress, worker.wallet);
-      if (vrfEnabled) {
-        try {
-          // Compute the seed: keccak256(contractAddress, loopID)
-          // The loopID is encoded in progressWithData from shouldProgressLoop
-          const abiCoder = ethers.AbiCoder.defaultAbiCoder();
-          const loopID = abiCoder.decode(["uint256"], progressWithData)[0];
-          const seed = ethers.keccak256(
-            ethers.solidityPacked(["address", "uint256"], [contractAddress, loopID])
-          );
-
-          // Generate VRF proof
-          const vrfProof = generateVRFProof("0x" + this.privateKey.replace(/^0x/, ""), seed);
-          log.info(`Generated VRF proof for contract ${contractAddress}`, { contract: contractAddress, loopID: loopID.toString() });
-
-          // Wrap in VRF envelope
-          progressWithData = wrapWithVRFEnvelope(vrfProof, progressWithData);
-        } catch (vrfErr) {
-          log.warn(`VRF proof generation failed for ${contractAddress}, skipping update`, { contract: contractAddress, error: vrfErr.message });
-          return; // Don't send a non-VRF tx to a VRF contract — it will revert and waste gas
-        }
-      }
-
-      const autoLoop = new ethers.Contract(
-        deployments[this.network].AUTO_LOOP,
-        autoLoopABI,
-        worker.managedWallet
+    // Set gas from contract settings
+    let maxGas = await autoLoop.maxGasFor(contractAddress);
+    const gasBuffer = await autoLoop.gasBuffer();
+    try {
+      const txGas = await autoLoop.progressLoop.estimateGas(
+        contractAddress,
+        progressWithData
       );
+      log.info("Estimated gas", { gas: txGas.toString(), contract: contractAddress });
+      // add fee on top of gas
+      let totalGas = (BigInt(txGas) + BigInt(gasBuffer)) * 17n / 10n;
+      const contractBalance = await autoLoop.balance(contractAddress);
 
-      // Set gas from contract settings
-      let maxGas = await autoLoop.maxGasFor(contractAddress);
-      const gasBuffer = await autoLoop.gasBuffer();
-      try {
-        const txGas = await autoLoop.progressLoop.estimateGas(
+      const feeData = await worker.provider.getFeeData();
+      const gasPrice = feeData.gasPrice;
+      const totalGasCost = totalGas * gasPrice;
+      let contractHasGas = BigInt(contractBalance) >= totalGasCost;
+
+      if (contractHasGas) {
+        let tx = await autoLoop.progressLoop(
           contractAddress,
-          progressWithData
+          progressWithData,
+          {
+            gasLimit: totalGas,
+          }
         );
-        log.info("Estimated gas", { gas: txGas.toString(), contract: contractAddress });
-        // add fee on top of gas
-        let totalGas = (BigInt(txGas) + BigInt(gasBuffer)) * 17n / 10n;
-        const contractBalance = await autoLoop.balance(contractAddress);
-
-        const feeData = await worker.provider.getFeeData();
-        const gasPrice = feeData.gasPrice;
-        const totalGasCost = totalGas * gasPrice;
-        let contractHasGas = BigInt(contractBalance) >= totalGasCost;
-
-        if (contractHasGas) {
-          let tx = await autoLoop.progressLoop(
-            contractAddress,
-            progressWithData,
-            {
-              gasLimit: totalGas,
-            }
-          );
-          let receipt = await tx.wait();
-          let gasUsed = receipt.gasUsed;
-          log.info(`Progressed loop on contract ${contractAddress}.`, { contract: contractAddress, gasUsed: gasUsed.toString() });
-        } else {
-          log.warn(`Contract ${contractAddress} underfunded. Cannot progress.`, { contract: contractAddress, balance: contractBalance.toString() });
-        }
-      } catch (err) {
-        log.error("Error progressing loop", { contract: contractAddress, error: err.message });
-        sendAlert("error", "Transaction Failed", `Failed to progress loop on ${contractAddress}`, {
-          Contract: contractAddress,
-          Error: err.message,
-        }, "tx_failure");
-        // Reset nonce manager to re-sync from chain on next tx
-        worker.managedWallet.reset();
+        let receipt = await tx.wait();
+        let gasUsed = receipt.gasUsed;
+        log.info(`Progressed loop on contract ${contractAddress}.`, { contract: contractAddress, gasUsed: gasUsed.toString() });
+      } else {
+        log.warn(`Contract ${contractAddress} underfunded. Cannot progress.`, { contract: contractAddress, balance: contractBalance.toString() });
       }
-    } else {
-      throw new Error(`Contract no longer needs update: ${contractAddress}`);
+    } catch (err) {
+      log.error("Error progressing loop", { contract: contractAddress, error: err.message });
+      sendAlert("error", "Transaction Failed", `Failed to progress loop on ${contractAddress}`, {
+        Contract: contractAddress,
+        Error: err.message,
+      }, "tx_failure");
+      // Reset nonce manager to re-sync from chain on next tx
+      worker.managedWallet.reset();
     }
   }
 
@@ -403,6 +419,10 @@ class Worker {
 
     worker.provider.on("block", async (blockNumber) => {
       if (isShuttingDown) return;
+      // Prevent overlapping block handler execution — if previous block
+      // is still being processed, skip this one to avoid duplicate txs
+      if (isProcessing) return;
+      isProcessing = true;
       try {
         if (this.totalBlocksPassed % this.pingInterval == 0) {
           // Download queue on first run, and periodically re-download to pick up new registrations
@@ -428,11 +448,11 @@ class Worker {
 
           for (let i = 0; i < currentContracts.length; i++) {
             if (isShuttingDown) break;
-            const needsUpdate = await this.checkNeedsUpdate(currentContracts[i]);
+            const { needsUpdate, progressWithData } = await this.checkNeedsUpdate(currentContracts[i]);
             if (needsUpdate) {
               try {
                 activeUpdateCount++;
-                await this.performUpdate(currentContracts[i]);
+                await this.performUpdate(currentContracts[i], progressWithData);
                 activeUpdateCount--;
               } catch (err) {
                 activeUpdateCount--;
@@ -462,6 +482,8 @@ class Worker {
           lastCheck: new Date().toISOString(),
           lastError: err.message,
         });
+      } finally {
+        isProcessing = false;
       }
     });
 

@@ -1,4 +1,9 @@
 {
+    "mainnet": {
+        "AUTO_LOOP": "",
+        "AUTO_LOOP_REGISTRY": "",
+        "AUTO_LOOP_REGISTRAR": ""
+    },
     "sepolia": {
         "AUTO_LOOP": "0xB5F4cF500daE3162A4A4F5D2f3569bE1d5BE5238",
         "AUTO_LOOP_REGISTRY": "0xAE63c1071020964e61f668De95cA1c90ad5695A7",
