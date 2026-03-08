@@ -77,10 +77,10 @@ function resolveRuntime(config, env = process.env) {
   const signerMode = env.SIGNER_MODE || "dev";
   const isMainnet = MAINNET_NETWORKS.has(network);
 
-  // Safety: mainnet must use KMS
+  // Safety: warn on mainnet with raw private key (workers use dev keys, deployers should use KMS)
   if (isMainnet && signerMode === "dev") {
-    throw new Error(
-      `SIGNER_MODE must be "kms" for mainnet. Raw private keys are not allowed on mainnet.`
+    console.warn(
+      "WARNING: Using raw private key on mainnet. This is OK for workers but deployers should use KMS."
     );
   }
 
