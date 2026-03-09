@@ -31,12 +31,18 @@ function getGcpKmsSigner() {
 // VRF interface ID: bytes4(keccak256("AutoLoopVRFCompatible"))
 const VRF_INTERFACE_ID = ethers.id("AutoLoopVRFCompatible").slice(0, 10);
 
+// Hybrid VRF interface ID: bytes4(keccak256("AutoLoopHybridVRFCompatible"))
+const HYBRID_VRF_INTERFACE_ID = ethers.id("AutoLoopHybridVRFCompatible").slice(0, 10);
+
 // secp256k1 curve order
 const CURVE_ORDER = secp256k1.CURVE.n;
 // secp256k1 field prime
 const FIELD_PRIME = secp256k1.CURVE.p;
 
-// Cache for VRF-compatible contract detection
+// Cache for VRF mode detection: "none" | "full" | "hybrid"
+const vrfModeCache = new Map();
+
+// Legacy cache kept for backward compat with isVRFCompatible
 const vrfCompatibleCache = new Map();
 
 let worker;
@@ -78,6 +84,44 @@ async function isVRFCompatible(contractAddress, signerOrProvider) {
   } catch {
     vrfCompatibleCache.set(contractAddress, false);
     return false;
+  }
+}
+
+/**
+ * Determine the VRF mode for a contract: "none", "full", or "hybrid".
+ * Hybrid contracts also pass the full VRF check (they extend it), so check hybrid first.
+ * Results are cached to avoid repeated on-chain calls.
+ */
+async function getVRFMode(contractAddress, signerOrProvider) {
+  if (vrfModeCache.has(contractAddress)) {
+    return vrfModeCache.get(contractAddress);
+  }
+  try {
+    const contract = new ethers.Contract(
+      contractAddress,
+      ["function supportsInterface(bytes4) view returns (bool)"],
+      signerOrProvider
+    );
+    // Check hybrid first (it also passes the full VRF check since it extends it)
+    const isHybrid = await contract.supportsInterface(HYBRID_VRF_INTERFACE_ID);
+    if (isHybrid) {
+      vrfModeCache.set(contractAddress, "hybrid");
+      vrfCompatibleCache.set(contractAddress, true);
+      return "hybrid";
+    }
+    const isFullVRF = await contract.supportsInterface(VRF_INTERFACE_ID);
+    if (isFullVRF) {
+      vrfModeCache.set(contractAddress, "full");
+      vrfCompatibleCache.set(contractAddress, true);
+      return "full";
+    }
+    vrfModeCache.set(contractAddress, "none");
+    vrfCompatibleCache.set(contractAddress, false);
+    return "none";
+  } catch {
+    vrfModeCache.set(contractAddress, "none");
+    vrfCompatibleCache.set(contractAddress, false);
+    return "none";
   }
 }
 
@@ -335,35 +379,73 @@ class Worker {
   }
 
   async performUpdate(contractAddress, progressWithData) {
-    // Check if contract supports VRF and wrap data accordingly
-    const vrfEnabled = await isVRFCompatible(contractAddress, worker.wallet);
-    if (vrfEnabled) {
-      // VRF proof generation requires the raw private key (for Gamma = sk * H).
-      // KMS signers never expose the private key, so VRF is incompatible with KMS mode.
+    // Determine VRF mode: "none", "full", or "hybrid"
+    const vrfMode = await getVRFMode(contractAddress, worker.wallet);
+
+    if (vrfMode === "full") {
+      // Full VRF: every tick gets a VRF proof (existing behavior)
       if (this.signerMode === "kms") {
         log.warn(`VRF contract ${contractAddress} cannot be served in KMS mode — private key required for VRF proofs`, { contract: contractAddress });
         return;
       }
       try {
-        // Compute the seed: keccak256(contractAddress, loopID)
-        // The loopID is encoded in progressWithData from shouldProgressLoop
         const abiCoder = ethers.AbiCoder.defaultAbiCoder();
         const loopID = abiCoder.decode(["uint256"], progressWithData)[0];
         const seed = ethers.keccak256(
           ethers.solidityPacked(["address", "uint256"], [contractAddress, loopID])
         );
 
-        // Generate VRF proof
         const vrfProof = generateVRFProof("0x" + this.privateKey.replace(/^0x/, ""), seed);
         log.info(`Generated VRF proof for contract ${contractAddress}`, { contract: contractAddress, loopID: loopID.toString() });
 
-        // Wrap in VRF envelope
         progressWithData = wrapWithVRFEnvelope(vrfProof, progressWithData);
       } catch (vrfErr) {
         log.warn(`VRF proof generation failed for ${contractAddress}, skipping update`, { contract: contractAddress, error: vrfErr.message });
-        return; // Don't send a non-VRF tx to a VRF contract — it will revert and waste gas
+        return;
+      }
+    } else if (vrfMode === "hybrid") {
+      // Hybrid VRF: decode the flag to decide whether this tick needs VRF
+      // progressWithData = abi.encode(bool needsVRF, uint256 loopID, bytes gameData)
+      try {
+        const abiCoder = ethers.AbiCoder.defaultAbiCoder();
+        const [needsVRF, loopID] = abiCoder.decode(
+          ["bool", "uint256", "bytes"],
+          progressWithData
+        );
+
+        if (needsVRF) {
+          if (this.signerMode === "kms") {
+            log.warn(`Hybrid VRF tick on ${contractAddress} cannot be served in KMS mode`, { contract: contractAddress });
+            return;
+          }
+
+          const seed = ethers.keccak256(
+            ethers.solidityPacked(["address", "uint256"], [contractAddress, loopID])
+          );
+
+          const vrfProof = generateVRFProof("0x" + this.privateKey.replace(/^0x/, ""), seed);
+          log.info(`Generated VRF proof for hybrid tick on ${contractAddress}`, {
+            contract: contractAddress,
+            loopID: loopID.toString(),
+            vrfMode: "hybrid",
+          });
+
+          // Wrap the original progressWithData (which contains the hybrid flag) in VRF envelope
+          progressWithData = wrapWithVRFEnvelope(vrfProof, progressWithData);
+        } else {
+          log.info(`Standard tick on hybrid contract ${contractAddress}`, {
+            contract: contractAddress,
+            loopID: loopID.toString(),
+            vrfMode: "hybrid",
+          });
+          // Send progressWithData as-is — no VRF proof needed
+        }
+      } catch (vrfErr) {
+        log.warn(`Hybrid VRF processing failed for ${contractAddress}, skipping update`, { contract: contractAddress, error: vrfErr.message });
+        return;
       }
     }
+    // vrfMode === "none": send progressWithData as-is (standard behavior)
 
     const autoLoop = new ethers.Contract(
       deployments[this.network].AUTO_LOOP,
