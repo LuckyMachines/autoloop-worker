@@ -1,6 +1,6 @@
 # Lucky Machines AutoLoop Worker
 
-An off-chain worker that monitors registered AutoLoop-compatible contracts and executes `progressLoop()` when needed. Supports both standard loops and VRF (Verifiable Random Function) loops.
+An off-chain worker that monitors registered AutoLoop-compatible contracts and executes `progressLoop()` when needed. Supports all three automation modes: Standard, Hybrid VRF, and Full VRF.
 
 ## AI Agent Quickstart
 
@@ -42,7 +42,7 @@ You can also define per-network keys:
 PRIVATE_KEY_ANVIL=0x...
 RPC_URL_ANVIL=http://127.0.0.1:8545
 PRIVATE_KEY_SEPOLIA=0x...
-RPC_URL_SEPOLIA=https://ethereum-sepolia-rpc.publicnode.com
+RPC_URL_SEPOLIA=https://sepolia.infura.io/v3/YOUR_INFURA_KEY
 ```
 
 ## Configuration
@@ -116,8 +116,8 @@ The worker ships with a `Dockerfile` and `railway.toml` for Railway deployment.
 Set these per worker service:
 
 ```
-NETWORK=sepolia
-RPC_URL=https://ethereum-sepolia-rpc.publicnode.com
+NETWORK=mainnet
+RPC_URL=https://mainnet.infura.io/v3/YOUR_INFURA_KEY
 PRIVATE_KEY=0x_YOUR_WORKER_KEY
 PORT=3000
 ```
@@ -133,9 +133,15 @@ The Dockerfile includes a `HEALTHCHECK` that pings `/health`. The entrypoint is 
 
 ## VRF Support
 
-The worker auto-detects VRF-compatible contracts via ERC-165 (`supportsInterface`) and submits ECVRF-SECP256K1-SHA256-TAI proofs when required.
+The worker auto-detects contract types via ERC-165 (`supportsInterface`) and handles each mode automatically:
 
-Before a VRF contract accepts proofs from a controller, the controller public key must be registered on-chain:
+| Contract Type | ERC-165 Interface | Worker Behavior |
+|---------------|-------------------|-----------------|
+| `AutoLoopCompatible` | — | Standard execution, no VRF |
+| `AutoLoopHybridVRFCompatible` | `bytes4(keccak256("AutoLoopHybridVRFCompatible"))` | Reads `needsVRF` flag from `shouldProgressLoop()` data; generates VRF proof only when `true` |
+| `AutoLoopVRFCompatible` | `bytes4(keccak256("AutoLoopVRFCompatible"))` | Generates ECVRF proof on every tick |
+
+All VRF proofs use ECVRF-SECP256K1-SHA256-TAI. Before a VRF or Hybrid VRF contract accepts proofs from a controller, the controller public key must be registered on-chain:
 
 ```solidity
 vrfContract.registerControllerKey(controllerAddress, pkX, pkY);
