@@ -54,7 +54,7 @@ let activeUpdateCount = 0;
 
 // This is not necessarily called every block. This is how many blocks to wait after
 // queue of addresses needing updates has been processed.
-const DEFAULT_PING_INTERVAL = 1; // # blocks to wait before checking
+const DEFAULT_PING_INTERVAL = 3; // # blocks to wait before checking (~36s on mainnet)
 const DEFAULT_EXPIRATION = 0; // # updates to wait before shutting down, 0 = never
 const QUEUE_REFRESH_INTERVAL = 50; // re-download queue every N blocks to pick up new registrations
 
@@ -483,7 +483,7 @@ class Worker {
         let gasUsed = receipt.gasUsed;
         log.info(`Progressed loop on contract ${contractAddress}.`, { contract: contractAddress, gasUsed: gasUsed.toString() });
       } else {
-        log.warn(`Contract ${contractAddress} underfunded. Cannot progress.`, { contract: contractAddress, balance: contractBalance.toString() });
+        log.info(`Contract ${contractAddress} underfunded, skipping.`, { contract: contractAddress, balance: contractBalance.toString() });
       }
     } catch (err) {
       log.error("Error progressing loop", { contract: contractAddress, error: err.message });
@@ -579,9 +579,10 @@ class Worker {
         lastCheck: new Date().toISOString(),
         lastError: err.message,
       });
-      // Attempt failover on connection-level errors
-      const failoverErrors = ["SERVER_ERROR", "NETWORK_ERROR", "TIMEOUT", "ECONNREFUSED", "ENOTFOUND", "ECONNRESET"];
-      const shouldFailover = failoverErrors.some(code =>
+      // Attempt failover on connection-level errors or rate limits
+      const failoverErrors = ["SERVER_ERROR", "NETWORK_ERROR", "TIMEOUT", "ECONNREFUSED", "ENOTFOUND", "ECONNRESET", "BAD_DATA"];
+      const isRateLimited = err.message && (err.message.includes("Too Many Requests") || err.message.includes("-32005"));
+      const shouldFailover = isRateLimited || failoverErrors.some(code =>
         err.code === code || (err.message && err.message.includes(code))
       );
       if (shouldFailover && this.rpcUrls.length > 1) {
