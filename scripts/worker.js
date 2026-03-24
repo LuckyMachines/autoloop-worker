@@ -453,38 +453,74 @@ class Worker {
       worker.managedWallet
     );
 
-    // Set gas from contract settings
-    let maxGas = await autoLoop.maxGasFor(contractAddress);
-    const gasBuffer = await autoLoop.gasBuffer();
+    // Fetch contract gas settings
+    const maxGas = BigInt(await autoLoop.maxGasFor(contractAddress));
+    const maxGasPrice = BigInt(await autoLoop.maxGasPriceFor(contractAddress));
+    const gasBuffer = BigInt(await autoLoop.gasBuffer());
+    const baseFee = BigInt(await autoLoop.baseFee());
+
+    // Fetch minBalance (fallback to 0 if contract hasn't been upgraded yet)
+    let minBal = 0n;
+    try { minBal = BigInt(await autoLoop.minBalanceFor(contractAddress)); } catch {}
+
+    // Check current gas price against contract's maxGasPrice
+    const feeData = await worker.provider.getFeeData();
+    const gasPrice = BigInt(feeData.gasPrice);
+    if (gasPrice > maxGasPrice) {
+      log.info(`Gas price ${gasPrice} exceeds maxGasPrice ${maxGasPrice} for ${contractAddress}, skipping tick.`, {
+        contract: contractAddress, gasPrice: gasPrice.toString(), maxGasPrice: maxGasPrice.toString(),
+      });
+      return;
+    }
+
     try {
-      const txGas = await autoLoop.progressLoop.estimateGas(
+      const txGas = BigInt(await autoLoop.progressLoop.estimateGas(
         contractAddress,
         progressWithData
-      );
+      ));
       log.info("Estimated gas", { gas: txGas.toString(), contract: contractAddress });
-      // add fee on top of gas
-      let totalGas = (BigInt(txGas) + BigInt(gasBuffer)) * 17n / 10n;
-      const contractBalance = await autoLoop.balance(contractAddress);
 
-      const feeData = await worker.provider.getFeeData();
-      const gasPrice = feeData.gasPrice;
-      const totalGasCost = totalGas * gasPrice;
-      let contractHasGas = BigInt(contractBalance) >= totalGasCost;
-
-      if (contractHasGas) {
-        let tx = await autoLoop.progressLoop(
-          contractAddress,
-          progressWithData,
-          {
-            gasLimit: totalGas,
-          }
-        );
-        let receipt = await tx.wait();
-        let gasUsed = receipt.gasUsed;
-        log.info(`Progressed loop on contract ${contractAddress}.`, { contract: contractAddress, gasUsed: gasUsed.toString() });
-      } else {
-        log.info(`Contract ${contractAddress} underfunded, skipping.`, { contract: contractAddress, balance: contractBalance.toString() });
+      // Enforce maxGas — skip if estimate exceeds the user's configured limit
+      if (txGas > maxGas) {
+        log.warn(`Gas estimate ${txGas} exceeds maxGas ${maxGas} for ${contractAddress}, skipping tick.`, {
+          contract: contractAddress, estimated: txGas.toString(), maxGas: maxGas.toString(),
+        });
+        sendAlert("warn", "Gas Limit Exceeded", `Gas estimate exceeds maxGas for ${contractAddress}`, {
+          Contract: contractAddress, Estimated: txGas.toString(), MaxGas: maxGas.toString(),
+        }, "gas_limit_exceeded");
+        return;
       }
+
+      // Calculate total cost including gas buffer and protocol fee
+      const totalGas = (txGas + gasBuffer) * 17n / 10n;
+      const gasCost = totalGas * gasPrice;
+      const fee = (txGas * gasPrice * baseFee) / 100n;
+      const totalCost = gasCost + fee;
+
+      // Check balance covers cost + minBalance reserve
+      const contractBalance = BigInt(await autoLoop.balance(contractAddress));
+      if (contractBalance < totalCost + minBal) {
+        const reason = minBal > 0n
+          ? `balance ${contractBalance} minus reserve ${minBal} insufficient for cost ${totalCost}`
+          : `balance ${contractBalance} insufficient for cost ${totalCost}`;
+        log.info(`Contract ${contractAddress} underfunded: ${reason}, skipping.`, {
+          contract: contractAddress, balance: contractBalance.toString(),
+          cost: totalCost.toString(), minBalance: minBal.toString(),
+        });
+        return;
+      }
+
+      // Cap gasLimit to maxGas + buffer (don't exceed user's configured ceiling)
+      const gasLimit = totalGas < maxGas + gasBuffer ? totalGas : maxGas + gasBuffer;
+
+      let tx = await autoLoop.progressLoop(
+        contractAddress,
+        progressWithData,
+        { gasLimit },
+      );
+      let receipt = await tx.wait();
+      let gasUsed = receipt.gasUsed;
+      log.info(`Progressed loop on contract ${contractAddress}.`, { contract: contractAddress, gasUsed: gasUsed.toString() });
     } catch (err) {
       log.error("Error progressing loop", { contract: contractAddress, error: err.message });
       sendAlert("error", "Transaction Failed", `Failed to progress loop on ${contractAddress}`, {
