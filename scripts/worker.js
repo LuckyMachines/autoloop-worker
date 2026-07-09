@@ -87,6 +87,26 @@ async function isVRFCompatible(contractAddress, signerOrProvider) {
   }
 }
 
+async function isRaceVRGStyleVRFContract(contractAddress, signerOrProvider) {
+  try {
+    const address = await signerOrProvider.getAddress?.();
+    if (!address) return false;
+    const contract = new ethers.Contract(
+      contractAddress,
+      [
+        "function controllerKeyRegistered(address) view returns (bool)",
+        "function computeSeed(uint256 loopID) view returns (bytes)",
+      ],
+      signerOrProvider
+    );
+    await contract.controllerKeyRegistered(address);
+    const seed = await contract.computeSeed(1);
+    return typeof seed === "string" && seed.startsWith("0x") && seed.length >= 66;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Determine the VRF mode for a contract: "none", "full", or "hybrid".
  * Hybrid contracts also pass the full VRF check (they extend it), so check hybrid first.
@@ -111,6 +131,12 @@ async function getVRFMode(contractAddress, signerOrProvider) {
     }
     const isFullVRF = await contract.supportsInterface(VRF_INTERFACE_ID);
     if (isFullVRF) {
+      vrfModeCache.set(contractAddress, "full");
+      vrfCompatibleCache.set(contractAddress, true);
+      return "full";
+    }
+    const isRaceVRGStyle = await isRaceVRGStyleVRFContract(contractAddress, signerOrProvider);
+    if (isRaceVRGStyle) {
       vrfModeCache.set(contractAddress, "full");
       vrfCompatibleCache.set(contractAddress, true);
       return "full";
