@@ -55,6 +55,9 @@ RPC_URL_SEPOLIA=https://sepolia.infura.io/v3/YOUR_INFURA_KEY
 | `RPC_URL` | Yes | RPC endpoint for the target network |
 | `NETWORK` | No | Override network from config file (`anvil`, `sepolia`) |
 | `PORT` | No | Health server port (default: 3000) |
+| `AUTOLOOP_CONTRACT_ALLOWLIST` | No | Comma- or whitespace-separated registered contracts to monitor exclusively |
+| `AUTOLOOP_CONTRACT_BLOCKLIST` | No | Comma- or whitespace-separated registered contracts to exclude from full registry scans |
+| `AUTOLOOP_PRIORITY_CONTRACTS` | No | Comma- or whitespace-separated registered contracts to check first during full registry scans |
 
 The `NETWORK` env var overrides `controller.config.json`, making it easy to configure per-service in cloud deployments without modifying config files.
 
@@ -73,6 +76,7 @@ The `NETWORK` env var overrides `controller.config.json`, making it easy to conf
 - `network`: deployment key in `deployments.json` (`anvil`, `sepolia`)
 - `allowList`: optional explicit contract list to monitor
 - `blockList`: optional contracts to exclude when using full registry scan
+- Contract-list env vars override the matching config-file lists. `AUTOLOOP_PRIORITY_CONTRACTS` preserves the registry scan but checks beta-critical contracts first.
 
 Legacy `test/main/testMode` config shape is still supported.
 

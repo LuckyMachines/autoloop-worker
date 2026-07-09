@@ -707,6 +707,33 @@ class Queue {
       this.contracts.splice(index, 1);
     }
   }
+  prioritizeContracts(priorityContracts) {
+    if (!Array.isArray(priorityContracts) || priorityContracts.length === 0) {
+      return;
+    }
+
+    const byAddress = new Map(
+      this.contracts.map((contract) => [contract.toLowerCase(), contract])
+    );
+    const prioritized = [];
+    const prioritizedKeys = new Set();
+
+    for (const contract of priorityContracts) {
+      const key = contract.toLowerCase();
+      const existing = byAddress.get(key);
+      if (existing && !prioritizedKeys.has(key)) {
+        prioritized.push(existing);
+        prioritizedKeys.add(key);
+      }
+    }
+
+    this.contracts = [
+      ...prioritized,
+      ...this.contracts.filter(
+        (contract) => !prioritizedKeys.has(contract.toLowerCase())
+      ),
+    ];
+  }
   async download() {
     // get queue from contracts
     try {
@@ -727,6 +754,7 @@ class Queue {
           this.contracts = await this.registryContract.getRegisteredAutoLoops();
         }
       }
+      this.prioritizeContracts(runtime.priorityContracts);
       log.info("Queue downloaded", { contracts: this.contracts });
     } catch (err) {
       log.error("Error downloading queue", { error: err.message });

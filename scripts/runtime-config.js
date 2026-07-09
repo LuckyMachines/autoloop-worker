@@ -12,6 +12,33 @@ function firstDefined(env, keys) {
   return null;
 }
 
+function parseAddressList(value, label) {
+  if (typeof value !== "string" || value.trim() === "") {
+    return [];
+  }
+
+  const entries = value
+    .split(/[\s,]+/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+  const seen = new Set();
+  const addresses = [];
+  for (const entry of entries) {
+    if (!/^0x[0-9a-fA-F]{40}$/.test(entry)) {
+      throw new Error(`${label} contains invalid address: ${entry}`);
+    }
+    const normalized = entry;
+    const key = normalized.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      addresses.push(normalized);
+    }
+  }
+
+  return addresses;
+}
+
 function normalizeProfile(config) {
   if (config && typeof config.network === "string") {
     return {
@@ -107,6 +134,19 @@ function resolveRuntime(config, env = process.env) {
       ])
     : null;
 
+  const envAllowList = parseAddressList(
+    firstDefined(env, ["AUTOLOOP_CONTRACT_ALLOWLIST", "AUTOLOOP_ALLOWLIST", "CONTRACT_ALLOWLIST"]),
+    "AUTOLOOP_CONTRACT_ALLOWLIST"
+  );
+  const envBlockList = parseAddressList(
+    firstDefined(env, ["AUTOLOOP_CONTRACT_BLOCKLIST", "AUTOLOOP_BLOCKLIST", "CONTRACT_BLOCKLIST"]),
+    "AUTOLOOP_CONTRACT_BLOCKLIST"
+  );
+  const priorityContracts = parseAddressList(
+    firstDefined(env, ["AUTOLOOP_PRIORITY_CONTRACTS", "PRIORITY_CONTRACTS"]),
+    "AUTOLOOP_PRIORITY_CONTRACTS"
+  );
+
   if (!rpcUrl) {
     throw new Error(
       `Missing RPC URL for network "${network}". Set RPC_URL_${suffix} or RPC_URL.`
@@ -120,8 +160,9 @@ function resolveRuntime(config, env = process.env) {
 
   return {
     network,
-    allowList: profile.allowList,
-    blockList: profile.blockList,
+    allowList: envAllowList.length > 0 ? envAllowList : profile.allowList,
+    blockList: envBlockList.length > 0 ? envBlockList : profile.blockList,
+    priorityContracts,
     rpcUrl,
     rpcUrls,
     privateKey,
