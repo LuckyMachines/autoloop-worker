@@ -1,5 +1,9 @@
 const LOCAL_NETWORKS = new Set(["anvil", "localhost", "hardhat"]);
 const MAINNET_NETWORKS = new Set(["mainnet", "ethereum"]);
+const LUCKY_RACES_SEPOLIA_AUTOMATION_CONTRACTS = [
+  "0x02e731205a610D91902152D81759927695081bce",
+  "0x484a5916e1Bf85340Fb125574405759c8D82BcC9",
+];
 
 function firstDefined(env, keys) {
   for (const key of keys) {
@@ -37,6 +41,21 @@ function parseAddressList(value, label) {
   }
 
   return addresses;
+}
+
+function mergeAddressLists(...lists) {
+  const seen = new Set();
+  const merged = [];
+  for (const list of lists) {
+    for (const address of list) {
+      const key = address.toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        merged.push(address);
+      }
+    }
+  }
+  return merged;
 }
 
 function normalizeProfile(config) {
@@ -146,6 +165,16 @@ function resolveRuntime(config, env = process.env) {
     firstDefined(env, ["AUTOLOOP_PRIORITY_CONTRACTS", "PRIORITY_CONTRACTS"]),
     "AUTOLOOP_PRIORITY_CONTRACTS"
   );
+  const configuredAllowList = envAllowList.length > 0 ? envAllowList : profile.allowList;
+  const configuredAllowSet = new Set(configuredAllowList.map((address) => address.toLowerCase()));
+  const shouldIncludeLuckyRacesSepoliaAutomation =
+    network === "sepolia" &&
+    LUCKY_RACES_SEPOLIA_AUTOMATION_CONTRACTS.some((address) =>
+      configuredAllowSet.has(address.toLowerCase())
+    );
+  const allowList = shouldIncludeLuckyRacesSepoliaAutomation
+    ? mergeAddressLists(configuredAllowList, LUCKY_RACES_SEPOLIA_AUTOMATION_CONTRACTS)
+    : configuredAllowList;
 
   if (!rpcUrl) {
     throw new Error(
@@ -160,7 +189,7 @@ function resolveRuntime(config, env = process.env) {
 
   return {
     network,
-    allowList: envAllowList.length > 0 ? envAllowList : profile.allowList,
+    allowList,
     blockList: envBlockList.length > 0 ? envBlockList : profile.blockList,
     priorityContracts,
     rpcUrl,
