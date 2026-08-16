@@ -24,7 +24,8 @@
     "registered-auto-loops": "node scripts/registered-auto-loops.js",
     "start": "node scripts/worker.js",
     "cloud-start": "node scripts/cloud-start.js",
-    "register-vrf-keys": "node scripts/register-vrf-keys.js"
+    "register-vrf-keys": "node scripts/register-vrf-keys.js",
+    "check": "node scripts/check-syntax.js && npm audit --omit=dev --audit-level=high"
   },
   "repository": {
     "type": "git",
