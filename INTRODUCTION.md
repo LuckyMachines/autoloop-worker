@@ -47,6 +47,6 @@ AutoLoop is a decentralized automation protocol for smart contracts on Ethereum.
 
 | Contract | Address |
 |----------|---------|
-| AutoLoop | `0xB5F4cF500daE3162A4A4F5D2f3569bE1d5BE5238` |
-| AutoLoopRegistry | `0xAE63c1071020964e61f668De95cA1c90ad5695A7` |
-| AutoLoopRegistrar | `0xAE473527893bbf687D93cFD0e447d13202054ef0` |
+| AutoLoop | `0x311eB21A1f7C0f12Ea7995cd6c02855b1bDa2132` |
+| AutoLoopRegistry | `0xAC905aF2e40404D06317911beb03317Bd1bc5858` |
+| AutoLoopRegistrar | `0xDA2867844F77768451c2b5f208b4f78571fd82C1` |
